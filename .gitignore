@@ -1,8 +1,10 @@
-# Entorno virtual y caché de Python
+# Virtual environment and Python cache
 .venv/
 __pycache__/
 
-# Respuestas de los alumnos (contienen nombres)
+# Student answers (contain names)
+results-*.json
+results-*.csv
 resultados-*.json
 resultados-*.csv
 *.tmp

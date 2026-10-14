@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Together: preguntas en vivo para la clase, con QR, sin servicios externos.
+"""Together: live classroom questions with a QR code, no external services needed.
 
-Uso:
-    python together.py                      # usa presentacion.json
-    python together.py otra.json --puerto 8080
+Usage:
+    python together.py                      # uses presentation.json
+    python together.py other.json --port 8080
 
-Los alumnos se conectan desde el celular (misma red WiFi) escaneando el QR.
+Students join from their phones (same WiFi network) by scanning the QR code,
+or from anywhere with --public.
 """
 import argparse
 import csv
@@ -34,11 +35,12 @@ except ImportError:
 
 BASE = Path(__file__).resolve().parent
 STATIC = BASE / "static"
-TIPOS = {"contenido", "escalas", "nube", "opciones"}
-MAX_VOTANTES = 1000  # por diapositiva, para limitar abusos con la URL pública
+LANGUAGES = ("en", "es", "pt")  # interface languages, one file each in static/i18n/
+TYPES = {"content", "scale", "wordcloud", "choice"}
+MAX_VOTERS = 1000  # per slide, to limit abuse through the public URL
 
-# Túneles gratuitos para obtener una URL pública: (programa, comando, patrón de la URL)
-TUNELES = [
+# Free tunnels used to get a public URL: (program, command, URL pattern)
+TUNNELS = [
     ("cloudflared",
      lambda p: ["cloudflared", "tunnel", "--no-autoupdate", "--url", f"http://localhost:{p}"],
      r"https://[a-z0-9-]+\.trycloudflare\.com"),
@@ -49,8 +51,8 @@ TUNELES = [
 ]
 
 
-def ip_local():
-    """IP de esta computadora en la red local (no envía paquetes)."""
+def local_ip():
+    """This computer's IP on the local network (sends no packets)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("10.255.255.255", 1))
@@ -61,427 +63,451 @@ def ip_local():
         s.close()
 
 
-def normalizar(palabra):
-    p = re.sub(r"[^\w\s.+#-]", "", palabra.strip().lower())
-    return re.sub(r"\s+", " ", p).strip()[:30]
+def load_messages(lang):
+    """Interface texts for a language, falling back to English for any missing key."""
+    messages = json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))
+    if lang != "en":
+        messages.update(json.loads((STATIC / "i18n" / f"{lang}.json").read_text(encoding="utf-8")))
+    return messages
 
 
-class Estado:
-    def __init__(self, presentacion, archivo_resultados, reiniciar=False, tiempo=None):
+def normalize(word):
+    w = re.sub(r"[^\w\s.+#-]", "", word.strip().lower())
+    return re.sub(r"\s+", " ", w).strip()[:30]
+
+
+class State:
+    def __init__(self, presentation, results_file, reset=False, time_limit=None):
         self.lock = threading.Lock()
-        self.titulo = presentacion.get("titulo", "Presentación")
-        self.slides = presentacion["diapositivas"]
-        # Segundos para responder: --tiempo > "tiempo" de la presentación > 30. 0 = sin límite.
-        self.tiempo = tiempo if tiempo is not None else presentacion.get("tiempo", 30)
-        self.indice = 0
-        self._iniciar_diapositiva()
-        self.archivo = archivo_resultados
-        self.respuestas = {s["id"]: {} for s in self.slides}  # id -> votante -> respuesta
-        self.vistos = {}  # votante -> último pedido (para contar conectados)
-        self.nombres = {}  # votante -> nombre que escribió
-        if self.archivo.exists() and not reiniciar:
-            guardado = json.loads(self.archivo.read_text(encoding="utf-8"))
-            self.nombres = guardado.get("nombres", {})
-            for sid, resp in guardado.get("respuestas", {}).items():
-                if sid in self.respuestas:
-                    self.respuestas[sid] = resp
+        self.title = presentation.get("title", "Presentation")
+        self.slides = presentation["slides"]
+        # Seconds to answer: --time > the presentation's "time" > 30. 0 = no limit.
+        self.time_limit = time_limit if time_limit is not None else presentation.get("time", 30)
+        self.index = 0
+        self._start_slide()
+        self.file = results_file
+        self.answers = {s["id"]: {} for s in self.slides}  # id -> voter -> answer
+        self.seen = {}  # voter -> last request (to count who is connected)
+        self.names = {}  # voter -> name they typed
+        if self.file.exists() and not reset:
+            saved = json.loads(self.file.read_text(encoding="utf-8"))
+            self.names = saved.get("names", {})
+            for sid, answers in saved.get("answers", {}).items():
+                if sid in self.answers:
+                    self.answers[sid] = answers
 
     @property
-    def actual(self):
-        return self.slides[self.indice]
+    def current(self):
+        return self.slides[self.index]
 
-    def _iniciar_diapositiva(self):
-        s = self.actual
-        self.inicio = time.time()
-        self.duracion = 0 if s["tipo"] == "contenido" else s.get("tiempo", self.tiempo)
-        self.revelado = False  # el presentador puede mostrar los resultados antes de tiempo
+    def _start_slide(self):
+        s = self.current
+        self.started = time.time()
+        self.duration = 0 if s["type"] == "content" else s.get("time", self.time_limit)
+        self.revealed = False  # the presenter can show results before time is up
 
-    def _numeracion(self):
-        """(número de esta pregunta, total de preguntas), sin contar diapositivas de contenido."""
-        preguntas = [i for i, x in enumerate(self.slides) if x["tipo"] != "contenido"]
-        numero = sum(1 for i in preguntas if i <= self.indice)
-        return numero, len(preguntas)
+    def _numbering(self):
+        """(number of this question, total questions), not counting content slides."""
+        questions = [i for i, x in enumerate(self.slides) if x["type"] != "content"]
+        number = sum(1 for i in questions if i <= self.index)
+        return number, len(questions)
 
-    def _restante(self):
-        """Segundos que quedan para responder (None = sin límite)."""
-        if not self.duracion:
+    def _remaining(self):
+        """Seconds left to answer (None = no limit)."""
+        if not self.duration:
             return None
-        return max(0.0, self.inicio + self.duracion - time.time())
+        return max(0.0, self.started + self.duration - time.time())
 
-    def _participacion(self):
-        """(respondieron, esperados, nombres de quienes respondieron) en la diapositiva actual."""
-        ahora = time.time()
-        respondieron = self.respuestas[self.actual["id"]]
-        presentes = {v for v, t in self.vistos.items() if ahora - t < 8 and v in self.nombres}
-        esperados = presentes | set(respondieron)
-        nombres = [self.nombres.get(v, "") for v in respondieron]
-        return len(respondieron), len(esperados), nombres
+    def _participation(self):
+        """(answered, expected, names of who answered) on the current slide."""
+        now = time.time()
+        answered = self.answers[self.current["id"]]
+        present = {v for v, t in self.seen.items() if now - t < 8 and v in self.names}
+        expected = present | set(answered)
+        names = [self.names.get(v, "") for v in answered]
+        return len(answered), len(expected), names
 
-    def _guardar(self):
-        datos = {
-            "titulo": self.titulo,
-            "guardado": datetime.now().isoformat(timespec="seconds"),
-            "resumen": {s["id"]: self._resultados(s) for s in self.slides if s["tipo"] != "contenido"},
-            "nombres": self.nombres,
-            "respuestas": self.respuestas,
+    def _save(self):
+        data = {
+            "title": self.title,
+            "saved": datetime.now().isoformat(timespec="seconds"),
+            "summary": {s["id"]: self._results(s) for s in self.slides if s["type"] != "content"},
+            "names": self.names,
+            "answers": self.answers,
         }
-        tmp = self.archivo.with_suffix(".tmp")
-        tmp.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, self.archivo)
-        self._guardar_csv()
+        tmp = self.file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, self.file)
+        self._save_csv()
 
-    def _guardar_csv(self):
-        """Una fila por alumno, una columna por afirmación (para abrir en Excel o Sheets)."""
-        columnas = []  # (encabezado, id, índice de afirmación | None para nube | lista de opciones)
+    def _save_csv(self):
+        """One row per student, one column per statement (to open in Excel or Sheets)."""
+        columns = []  # (header, id, statement index | None for word cloud | list of options)
         for s in self.slides:
-            if s["tipo"] == "escalas":
-                for i, a in enumerate(s["afirmaciones"]):
-                    columnas.append((f"{s['id']} · {a['texto'][:60]}", s["id"], i))
-            elif s["tipo"] == "nube":
-                columnas.append((s["titulo"], s["id"], None))
-            elif s["tipo"] == "opciones":
-                columnas.append((s["titulo"], s["id"], s["opciones"]))
-        votantes = sorted({v for r in self.respuestas.values() for v in r},
-                          key=lambda v: self.nombres.get(v, "").lower())
-        tmp = self.archivo.with_suffix(".csv.tmp")
+            if s["type"] == "scale":
+                for i, st in enumerate(s["statements"]):
+                    columns.append((f"{s['id']} · {st['text'][:60]}", s["id"], i))
+            elif s["type"] == "wordcloud":
+                columns.append((s["title"], s["id"], None))
+            elif s["type"] == "choice":
+                columns.append((s["title"], s["id"], s["options"]))
+        voters = sorted({v for a in self.answers.values() for v in a},
+                        key=lambda v: self.names.get(v, "").lower())
+        tmp = self.file.with_suffix(".csv.tmp")
         with open(tmp, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["Nombre"] + [c[0] for c in columnas])
-            for v in votantes:
-                fila = [self.nombres.get(v, "")]
-                for _, sid, i in columnas:
-                    r = self.respuestas[sid].get(v)
-                    if r is None:
-                        fila.append("")
+            w.writerow(["Name"] + [c[0] for c in columns])
+            for v in voters:
+                row = [self.names.get(v, "")]
+                for _, sid, i in columns:
+                    a = self.answers[sid].get(v)
+                    if a is None:
+                        row.append("")
                     elif i is None:
-                        fila.append(", ".join(r))
+                        row.append(", ".join(a))
                     elif isinstance(i, list):
-                        fila.append(i[r])
+                        row.append(i[a])
                     else:
-                        fila.append(r[i])
-                w.writerow(fila)
-        os.replace(tmp, self.archivo.with_suffix(".csv"))
+                        row.append(a[i])
+                w.writerow(row)
+        os.replace(tmp, self.file.with_suffix(".csv"))
 
-    def _distribucion(self, s, i):
-        mn, mx = s.get("min", 1), s.get("max", 5)
-        vals = [r[i] for r in self.respuestas[s["id"]].values() if i < len(r)]
-        return vals, [vals.count(x) for x in range(mn, mx + 1)]
+    def _distribution(self, s, i):
+        lo, hi = s.get("min", 1), s.get("max", 5)
+        vals = [a[i] for a in self.answers[s["id"]].values() if i < len(a)]
+        return vals, [vals.count(x) for x in range(lo, hi + 1)]
 
-    def _resultados(self, s):
-        resp = list(self.respuestas[s["id"]].values())
-        if s["tipo"] == "escalas":
-            afirmaciones = []
-            for i, a in enumerate(s["afirmaciones"]):
-                vals, dist = self._distribucion(s, i)
+    def _results(self, s):
+        answers = list(self.answers[s["id"]].values())
+        if s["type"] == "scale":
+            statements = []
+            for i, st in enumerate(s["statements"]):
+                vals, dist = self._distribution(s, i)
                 item = {
                     "n": len(vals),
-                    "promedio": round(sum(vals) / len(vals), 2) if vals else None,
-                    "distribucion": dist,
+                    "mean": round(sum(vals) / len(vals), 2) if vals else None,
+                    "distribution": dist,
                 }
-                ref = a.get("comparar_con")
-                otra = next((x for x in self.slides if x["id"] == (ref or {}).get("id")), None)
-                if otra:
-                    item["antes_distribucion"] = self._distribucion(otra, ref["afirmacion"])[1]
-                afirmaciones.append(item)
-            return {"respuestas": len(resp), "afirmaciones": afirmaciones}
-        if s["tipo"] == "nube":
-            conteo = Counter(p for r in resp for p in r)
-            return {"respuestas": len(resp), "palabras": conteo.most_common(100)}
-        if s["tipo"] == "opciones":
-            return {"respuestas": len(resp), "conteo": [resp.count(i) for i in range(len(s["opciones"]))]}
-        return {"respuestas": 0}
+                ref = st.get("compare_with")
+                other = next((x for x in self.slides if x["id"] == (ref or {}).get("id")), None)
+                if other:
+                    item["before_distribution"] = self._distribution(other, ref["statement"])[1]
+                statements.append(item)
+            return {"responses": len(answers), "statements": statements}
+        if s["type"] == "wordcloud":
+            counts = Counter(w for a in answers for w in a)
+            return {"responses": len(answers), "words": counts.most_common(100)}
+        if s["type"] == "choice":
+            return {"responses": len(answers), "counts": [answers.count(i) for i in range(len(s["options"]))]}
+        return {"responses": 0}
 
-    def publico(self, votante, nombre=""):
+    def public(self, voter, name=""):
         with self.lock:
-            if votante and len(votante) <= 64:
-                self.vistos[votante] = time.time()
-                nombre = re.sub(r"\s+", " ", nombre).strip()[:60]
-                if nombre:
-                    self.nombres[votante] = nombre
-            s = self.actual
-            restante = self._restante()
-            numero, preguntas = self._numeracion()
+            if voter and len(voter) <= 64:
+                self.seen[voter] = time.time()
+                name = re.sub(r"\s+", " ", name).strip()[:60]
+                if name:
+                    self.names[voter] = name
+            s = self.current
+            remaining = self._remaining()
+            number, questions = self._numbering()
             return {
-                "indice": self.indice,
+                "index": self.index,
                 "total": len(self.slides),
-                "pregunta": numero,
-                "preguntas": preguntas,
-                "diapositiva": s,
-                "mi_respuesta": self.respuestas[s["id"]].get(votante),
-                "restante": restante,
-                "duracion": self.duracion,
-                "cerrada": restante == 0,
+                "question": number,
+                "questions": questions,
+                "slide": s,
+                "my_answer": self.answers[s["id"]].get(voter),
+                "remaining": remaining,
+                "duration": self.duration,
+                "closed": remaining == 0,
             }
 
-    def presentador(self, url):
+    def presenter(self, url):
         with self.lock:
-            ahora = time.time()
-            respondieron, esperados, nombres = self._participacion()
-            restante = self._restante()
-            numero, preguntas = self._numeracion()
+            now = time.time()
+            answered, expected, names = self._participation()
+            remaining = self._remaining()
+            number, questions = self._numbering()
             return {
-                "titulo": self.titulo,
-                "pregunta": numero,
-                "preguntas": preguntas,
-                "indice": self.indice,
+                "title": self.title,
+                "question": number,
+                "questions": questions,
+                "index": self.index,
                 "total": len(self.slides),
-                "diapositiva": self.actual,
-                "resultados": self._resultados(self.actual),
-                "restante": restante,
-                "duracion": self.duracion,
-                "cerrada": restante == 0,
-                "revelado": self.revelado,
-                "respondieron": respondieron,
-                "esperados": esperados,
-                "quienes": nombres,
-                "conectados": sum(1 for t in self.vistos.values() if ahora - t < 8),
+                "slide": self.current,
+                "results": self._results(self.current),
+                "remaining": remaining,
+                "duration": self.duration,
+                "closed": remaining == 0,
+                "revealed": self.revealed,
+                "answered": answered,
+                "expected": expected,
+                "who": names,
+                "connected": sum(1 for t in self.seen.values() if now - t < 8),
                 "url": url,
                 "qr": segno is not None,
             }
 
-    def responder(self, votante, nombre, sid, respuesta):
+    def answer(self, voter, name, sid, answer):
         with self.lock:
-            s = self.actual
-            if not votante or not isinstance(votante, str) or len(votante) > 64:
-                raise ValueError("Identificador inválido.")
-            nombre = re.sub(r"\s+", " ", nombre).strip() if isinstance(nombre, str) else ""
-            if not nombre or len(nombre) > 60:
-                raise ValueError("Escribí tu nombre (hasta 60 caracteres).")
+            s = self.current
+            if not voter or not isinstance(voter, str) or len(voter) > 64:
+                raise ValueError("error.invalid_id")
+            name = re.sub(r"\s+", " ", name).strip() if isinstance(name, str) else ""
+            if not name or len(name) > 60:
+                raise ValueError("error.name")
             if sid != s["id"]:
-                raise ValueError("La presentación ya avanzó a otra diapositiva.")
-            if self.duracion and time.time() > self.inicio + self.duracion + 1.5:
-                raise ValueError("Se terminó el tiempo para esta pregunta.")
-            if votante not in self.respuestas[sid] and len(self.respuestas[sid]) >= MAX_VOTANTES:
-                raise ValueError("Se alcanzó el máximo de participantes.")
-            if s["tipo"] == "escalas":
-                mn, mx = s.get("min", 1), s.get("max", 5)
-                if (not isinstance(respuesta, list) or len(respuesta) != len(s["afirmaciones"])
-                        or not all(type(x) is int and mn <= x <= mx for x in respuesta)):
-                    raise ValueError("Respondé todas las afirmaciones.")
-                valor = respuesta
-            elif s["tipo"] == "nube":
-                if not isinstance(respuesta, list):
-                    raise ValueError("Respuesta inválida.")
-                valor = []
-                for p in respuesta:
-                    p = normalizar(p) if isinstance(p, str) else ""
-                    if p and p not in valor:
-                        valor.append(p)
-                valor = valor[: s.get("max_palabras", 3)]
-                if not valor:
-                    raise ValueError("Escribí al menos una palabra.")
-            elif s["tipo"] == "opciones":
-                if type(respuesta) is not int or not 0 <= respuesta < len(s["opciones"]):
-                    raise ValueError("Elegí una opción.")
-                valor = respuesta
+                raise ValueError("error.moved")
+            if self.duration and time.time() > self.started + self.duration + 1.5:
+                raise ValueError("error.time_up")
+            if voter not in self.answers[sid] and len(self.answers[sid]) >= MAX_VOTERS:
+                raise ValueError("error.max_voters")
+            if s["type"] == "scale":
+                lo, hi = s.get("min", 1), s.get("max", 5)
+                if (not isinstance(answer, list) or len(answer) != len(s["statements"])
+                        or not all(type(x) is int and lo <= x <= hi for x in answer)):
+                    raise ValueError("error.scale")
+                value = answer
+            elif s["type"] == "wordcloud":
+                if not isinstance(answer, list):
+                    raise ValueError("error.invalid_answer")
+                value = []
+                for w in answer:
+                    w = normalize(w) if isinstance(w, str) else ""
+                    if w and w not in value:
+                        value.append(w)
+                value = value[: s.get("max_words", 3)]
+                if not value:
+                    raise ValueError("error.min_one_word")
+            elif s["type"] == "choice":
+                if type(answer) is not int or not 0 <= answer < len(s["options"]):
+                    raise ValueError("error.choice")
+                value = answer
             else:
-                raise ValueError("Esta diapositiva no tiene pregunta.")
-            self.respuestas[sid][votante] = valor
-            self.nombres[votante] = nombre
-            self._guardar()
+                raise ValueError("error.no_question")
+            self.answers[sid][voter] = value
+            self.names[voter] = name
+            self._save()
 
-    def control(self, accion, indice=None):
+    def control(self, action, index=None):
         with self.lock:
-            anterior = self.indice
-            if accion == "siguiente":
-                self.indice = min(self.indice + 1, len(self.slides) - 1)
-            elif accion == "anterior":
-                self.indice = max(self.indice - 1, 0)
-            elif accion == "ir" and isinstance(indice, int) and 0 <= indice < len(self.slides):
-                self.indice = indice
-            elif accion == "revelar":
-                self.revelado = not self.revelado
-            elif accion == "reiniciar_tiempo":
-                self.inicio = time.time()
-                self.duracion = self.actual.get("tiempo", self.tiempo) if self.actual["tipo"] != "contenido" else 0
-                self.revelado = False
-            elif accion == "mas_tiempo":
-                if self.duracion:
-                    self.duracion = (time.time() - self.inicio) + self._restante() + 15
-            elif accion == "borrar":
-                self.respuestas[self.actual["id"]] = {}
-                self._guardar()
+            previous = self.index
+            if action == "next":
+                self.index = min(self.index + 1, len(self.slides) - 1)
+            elif action == "prev":
+                self.index = max(self.index - 1, 0)
+            elif action == "go" and isinstance(index, int) and 0 <= index < len(self.slides):
+                self.index = index
+            elif action == "reveal":
+                self.revealed = not self.revealed
+            elif action == "restart_timer":
+                self.started = time.time()
+                self.duration = self.current.get("time", self.time_limit) if self.current["type"] != "content" else 0
+                self.revealed = False
+            elif action == "add_time":
+                if self.duration:
+                    self.duration = (time.time() - self.started) + self._remaining() + 15
+            elif action == "clear":
+                self.answers[self.current["id"]] = {}
+                self._save()
             else:
-                raise ValueError("Acción desconocida.")
-            if self.indice != anterior:
-                self._iniciar_diapositiva()
+                raise ValueError("error.unknown_action")
+            if self.index != previous:
+                self._start_slide()
 
 
 class Handler(BaseHTTPRequestHandler):
-    estado = None
-    clave = ""
-    url_votar = ""
+    state = None
+    key = ""
+    vote_url = ""
+    messages = {}
 
     def log_message(self, *args):
         pass
 
-    def _enviar(self, cuerpo, tipo, codigo=200):
-        self.send_response(codigo)
-        self.send_header("Content-Type", tipo)
+    def _send(self, body, content_type, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(cuerpo)))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(cuerpo)
+        self.wfile.write(body)
 
-    def _json(self, datos, codigo=200):
-        self._enviar(json.dumps(datos, ensure_ascii=False).encode(), "application/json; charset=utf-8", codigo)
+    def _error(self, code_key, status):
+        self._json({"error": self.messages.get(code_key, code_key)}, status)
 
-    def _html(self, nombre):
-        self._enviar((STATIC / nombre).read_bytes(), "text/html; charset=utf-8")
+    def _json(self, data, code=200):
+        self._send(json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8", code)
 
-    def _autorizado(self, q):
-        return secrets.compare_digest(q.get("k", [""])[0], self.clave)
+    def _html(self, name):
+        self._send((STATIC / name).read_bytes(), "text/html; charset=utf-8")
+
+    def _authorized(self, q):
+        return secrets.compare_digest(q.get("k", [""])[0], self.key)
 
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
-        if u.path in ("/", "/votar"):
-            return self._html("votar.html")
-        if u.path == "/presentador":
-            return self._html("presentador.html")
+        if u.path in ("/", "/vote"):
+            return self._html("vote.html")
+        if u.path == "/presenter":
+            return self._html("presenter.html")
+        if u.path == "/i18n.json":
+            return self._json(self.messages)
         if u.path == "/qr.svg" and segno:
             buf = io.BytesIO()
-            segno.make(self.url_votar, error="m").save(buf, kind="svg", scale=10, border=2)
-            return self._enviar(buf.getvalue(), "image/svg+xml")
-        if u.path == "/api/estado":
-            return self._json(self.estado.publico(q.get("v", [""])[0], q.get("n", [""])[0]))
-        if u.path == "/api/presentador":
-            if not self._autorizado(q):
-                return self._json({"error": "Clave de presentador inválida."}, 403)
-            return self._json(self.estado.presentador(self.url_votar))
-        self._json({"error": "No encontrado."}, 404)
+            segno.make(self.vote_url, error="m").save(buf, kind="svg", scale=10, border=2)
+            return self._send(buf.getvalue(), "image/svg+xml")
+        if u.path == "/api/state":
+            return self._json(self.state.public(q.get("v", [""])[0], q.get("n", [""])[0]))
+        if u.path == "/api/presenter":
+            if not self._authorized(q):
+                return self._error("error.invalid_key", 403)
+            return self._json(self.state.presenter(self.vote_url))
+        self._error("error.not_found", 404)
 
     def do_POST(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         try:
-            largo = int(self.headers.get("Content-Length") or 0)
-            if largo > 10_000:
-                raise ValueError("Pedido demasiado grande.")
-            datos = json.loads(self.rfile.read(largo) or b"{}")
-            if u.path == "/api/responder":
-                self.estado.responder(datos.get("v"), datos.get("nombre"), datos.get("id"), datos.get("respuesta"))
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 10_000:
+                raise ValueError("error.too_large")
+            data = json.loads(self.rfile.read(length) or b"{}")
+            if u.path == "/api/answer":
+                self.state.answer(data.get("v"), data.get("name"), data.get("id"), data.get("answer"))
                 return self._json({"ok": True})
             if u.path == "/api/control":
-                if not self._autorizado(q):
-                    return self._json({"error": "Clave de presentador inválida."}, 403)
-                self.estado.control(datos.get("accion"), datos.get("indice"))
+                if not self._authorized(q):
+                    return self._error("error.invalid_key", 403)
+                self.state.control(data.get("action"), data.get("index"))
                 return self._json({"ok": True})
-            self._json({"error": "No encontrado."}, 404)
-        except (ValueError, json.JSONDecodeError) as e:
-            self._json({"error": str(e) or "Pedido inválido."}, 400)
+            self._error("error.not_found", 404)
+        except json.JSONDecodeError:
+            self._error("error.bad_request", 400)
+        except ValueError as e:  # the message is a key from static/i18n/*.json
+            self._error(str(e) if str(e).startswith("error.") else "error.bad_request", 400)
 
 
-def abrir_tunel(puerto, preferido=None, espera=40):
-    """Abre un túnel gratuito y devuelve (proceso, url_publica) o (None, None)."""
-    for nombre, comando, patron in TUNELES:
-        if (preferido and nombre != preferido) or not shutil.which(nombre):
+def open_tunnel(port, preferred=None, wait=40):
+    """Open a free tunnel and return (process, public_url), or (None, None)."""
+    for name, command, pattern in TUNNELS:
+        if (preferred and name != preferred) or not shutil.which(name):
             continue
-        print(f"  Abriendo túnel público con {nombre}…")
-        # stdin queda abierto (PIPE) para que la sesión ssh no se cierre.
-        proc = subprocess.Popen(comando(puerto), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        print(f"  Opening public tunnel with {name}…")
+        # stdin stays open (PIPE) so the ssh session does not close.
+        proc = subprocess.Popen(command(port), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
-        hallada = queue.Queue()
+        found = queue.Queue()
 
-        def leer():
-            for linea in proc.stdout:  # se sigue leyendo para que la salida no se trabe
-                m = re.search(patron, linea)
+        def read():
+            for line in proc.stdout:  # keep reading so the output pipe never fills up
+                m = re.search(pattern, line)
                 if m:
-                    hallada.put(m.group(0) + "/")
+                    found.put(m.group(0) + "/")
 
-        threading.Thread(target=leer, daemon=True).start()
+        threading.Thread(target=read, daemon=True).start()
         try:
-            return proc, hallada.get(timeout=espera)
+            return proc, found.get(timeout=wait)
         except queue.Empty:
             proc.terminate()
-            print(f"  No se pudo abrir el túnel con {nombre}.")
+            print(f"  Could not open the tunnel with {name}.")
     return None, None
 
 
-def mantener_tunel(proc, puerto, preferido):
-    """Si el túnel se corta, lo vuelve a abrir y actualiza la URL (y el QR)."""
+def keep_tunnel(proc, port, preferred):
+    """If the tunnel drops, reopen it and update the URL (and the QR code)."""
     while True:
         proc.wait()
-        print("\n  ⚠ Se cortó el túnel público. Reintentando…")
+        print("\n  ⚠ The public tunnel dropped. Retrying…")
         while True:
-            proc, url = abrir_tunel(puerto, preferido)
+            proc, url = open_tunnel(port, preferred)
             if url:
-                Handler.url_votar = url
-                print(f"  Nueva URL para alumnos: {url}  (el QR del presentador ya se actualizó)")
+                Handler.vote_url = url
+                print(f"  New URL for students: {url}  (the presenter's QR code is already updated)")
                 break
             time.sleep(10)
 
 
-def cargar_presentacion(ruta):
-    pres = json.loads(Path(ruta).read_text(encoding="utf-8"))
+def load_presentation(path):
+    pres = json.loads(Path(path).read_text(encoding="utf-8"))
     ids = set()
-    for n, s in enumerate(pres.get("diapositivas", []), 1):
-        if s.get("tipo") not in TIPOS:
-            raise SystemExit(f"Diapositiva {n}: tipo debe ser uno de {sorted(TIPOS)}")
+    for n, s in enumerate(pres.get("slides", []), 1):
+        if s.get("type") not in TYPES:
+            raise SystemExit(f"Slide {n}: type must be one of {sorted(TYPES)}")
         if not s.get("id") or s["id"] in ids:
-            raise SystemExit(f"Diapositiva {n}: falta 'id' o está repetido")
+            raise SystemExit(f"Slide {n}: 'id' is missing or repeated")
         ids.add(s["id"])
-        if s["tipo"] == "escalas" and not s.get("afirmaciones"):
-            raise SystemExit(f"Diapositiva {n}: una diapositiva de escalas necesita 'afirmaciones'")
-        if s["tipo"] == "opciones" and not s.get("opciones"):
-            raise SystemExit(f"Diapositiva {n}: una diapositiva de opciones necesita 'opciones'")
+        if s["type"] == "scale" and not s.get("statements"):
+            raise SystemExit(f"Slide {n}: a scale slide needs 'statements'")
+        if s["type"] == "choice" and not s.get("options"):
+            raise SystemExit(f"Slide {n}: a choice slide needs 'options'")
     if not ids:
-        raise SystemExit("La presentación no tiene diapositivas.")
+        raise SystemExit("The presentation has no slides.")
     return pres
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Preguntas en vivo para la clase, con QR.")
-    ap.add_argument("presentacion", nargs="?", default=str(BASE / "presentacion.json"))
-    ap.add_argument("--puerto", type=int, default=8000)
-    ap.add_argument("--tiempo", type=int, help="Segundos para responder cada pregunta (0 = sin límite)")
-    ap.add_argument("--publico", action="store_true",
-                    help="Crear una URL pública en internet (clases online) con un túnel gratuito")
-    ap.add_argument("--tunel", choices=[t[0] for t in TUNELES], help="Forzar el túnel a usar con --publico")
-    ap.add_argument("--ip", help="IP a mostrar en el QR (por defecto se detecta sola)")
-    ap.add_argument("--clave", help="Clave del presentador (por defecto, una al azar)")
-    ap.add_argument("--resultados", help="Archivo donde guardar las respuestas")
-    ap.add_argument("--reiniciar", action="store_true", help="Ignorar respuestas guardadas antes")
-    ap.add_argument("--no-abrir", action="store_true", help="No abrir el navegador automáticamente")
+    ap = argparse.ArgumentParser(description="Live classroom questions with a QR code.")
+    ap.add_argument("presentation", nargs="?", default=str(BASE / "presentation.json"))
+    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--lang", choices=LANGUAGES,
+                    help="Interface language for presenter and students (default: the presentation's "
+                         "\"language\", or en)")
+    ap.add_argument("--time", type=int, help="Seconds to answer each question (0 = no limit)")
+    ap.add_argument("--public", action="store_true",
+                    help="Create a public internet URL (online classes) through a free tunnel")
+    ap.add_argument("--tunnel", choices=[t[0] for t in TUNNELS], help="Force which tunnel to use with --public")
+    ap.add_argument("--ip", help="IP to show in the QR code (auto-detected by default)")
+    ap.add_argument("--key", help="Presenter key (random by default)")
+    ap.add_argument("--results", help="File where answers are saved")
+    ap.add_argument("--reset", action="store_true", help="Ignore previously saved answers")
+    ap.add_argument("--no-open", action="store_true", help="Do not open the browser automatically")
     args = ap.parse_args()
 
-    ruta = Path(args.presentacion).resolve()
-    pres = cargar_presentacion(ruta)
-    resultados = Path(args.resultados) if args.resultados else ruta.with_name(f"resultados-{ruta.stem}.json")
+    path = Path(args.presentation).resolve()
+    pres = load_presentation(path)
+    results = Path(args.results) if args.results else path.with_name(f"results-{path.stem}.json")
 
-    Handler.estado = Estado(pres, resultados, args.reiniciar, args.tiempo)
-    Handler.clave = args.clave or secrets.token_urlsafe(6)
-    Handler.url_votar = f"http://{args.ip or ip_local()}:{args.puerto}/"
-    url_presentador = f"http://localhost:{args.puerto}/presentador?k={Handler.clave}"
+    lang = args.lang or pres.get("language", "en")
+    if lang not in LANGUAGES:
+        raise SystemExit(f"Unsupported language {lang!r}. Choose one of: {', '.join(LANGUAGES)}")
+    Handler.messages = load_messages(lang)
+    Handler.state = State(pres, results, args.reset, args.time)
+    Handler.key = args.key or secrets.token_urlsafe(6)
+    Handler.vote_url = f"http://{args.ip or local_ip()}:{args.port}/"
+    presenter_url = f"http://localhost:{args.port}/presenter?k={Handler.key}"
 
-    # Con túnel público solo se escucha en esta máquina: todo el tráfico externo entra por el túnel.
-    servidor = ThreadingHTTPServer(("127.0.0.1" if args.publico else "0.0.0.0", args.puerto), Handler)
-    print(f"\n  {pres.get('titulo', '')}")
-    if args.publico:
-        proc, url = abrir_tunel(args.puerto, args.tunel)
+    # With a public tunnel we only listen on this machine: all outside traffic comes through the tunnel.
+    server = ThreadingHTTPServer(("127.0.0.1" if args.public else "0.0.0.0", args.port), Handler)
+    print(f"\n  {pres.get('title', '')}")
+    if args.public:
+        proc, url = open_tunnel(args.port, args.tunnel)
         if not url:
-            servidor.server_close()
-            raise SystemExit("\n  No se pudo crear la URL pública. Instalá cloudflared (ver LEEME.md) "
-                             "o verificá que el comando ssh funcione.")
-        Handler.url_votar = url
-        threading.Thread(target=mantener_tunel, args=(proc, args.puerto, args.tunel), daemon=True).start()
-    print(f"  Alumnos:      {Handler.url_votar}")
-    print(f"  Presentador:  {url_presentador}   (no compartas este enlace)")
-    print(f"  Respuestas guardadas en: {resultados}")
-    print(f"  Planilla por alumno:     {resultados.with_suffix('.csv')}")
+            server.server_close()
+            raise SystemExit("\n  Could not create the public URL. Install cloudflared (see README.md) "
+                             "or check that the ssh command works.")
+        Handler.vote_url = url
+        threading.Thread(target=keep_tunnel, args=(proc, args.port, args.tunnel), daemon=True).start()
+    print(f"  Language:   {lang}")
+    print(f"  Students:   {Handler.vote_url}")
+    print(f"  Presenter:  {presenter_url}   (do not share this link)")
+    print(f"  Answers saved to:      {results}")
+    print(f"  Spreadsheet per student: {results.with_suffix('.csv')}")
     if segno:
-        segno.make(Handler.url_votar, error="m").terminal(compact=True)
+        segno.make(Handler.vote_url, error="m").terminal(compact=True)
     else:
-        print("\n  (Para mostrar el QR instalá segno:  pip install segno)")
-    print("\n  Ctrl+C para terminar.\n")
-    if not args.no_abrir:
-        threading.Timer(0.5, webbrowser.open, [url_presentador]).start()
+        print("\n  (To show the QR code, install segno:  pip install segno)")
+    print("\n  Ctrl+C to quit.\n")
+    if not args.no_open:
+        threading.Timer(0.5, webbrowser.open, [presenter_url]).start()
     try:
-        servidor.serve_forever()
+        server.serve_forever()
     except KeyboardInterrupt:
-        print("\n  Listo. ¡Buena clase!")
+        print("\n  Done. Have a great class!")
     finally:
-        servidor.server_close()
+        server.server_close()
 
 
 if __name__ == "__main__":
