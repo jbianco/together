@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Together · Presenter</title>
+<!-- Word cloud fonts. Offline, each one falls back to a similar system font. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Montserrat:wght@800&family=Nunito:wght@800&family=Playfair+Display:ital,wght@0,700;1,700&family=Space+Grotesk:wght@700&display=swap">
 <style>
   :root {
     --bg: #f5f5fa; --card: #ffffff; --ink: #25233b; --muted: #6f6d86; --line: #e7e6f0;
@@ -124,9 +128,12 @@
   @keyframes growX { from { transform: scaleX(0); } }
 
   /* Word cloud */
-  .cloud { flex: 1; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 6px 30px; padding: 12px; }
-  .cloud span { font-weight: 650; line-height: 1.1; letter-spacing: -.01em; }
-  .reveal .cloud span { animation: appear .7s var(--ease) both; }
+  .cloud { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+  .cloud span { position: absolute; line-height: 1; white-space: nowrap; transform: translate(-50%, -50%) rotate(var(--r));
+                transition: left .6s var(--ease), top .6s var(--ease), font-size .6s var(--ease); cursor: default; }
+  .cloud span:hover { filter: brightness(1.15); }
+  .reveal .cloud span { animation: popWord .8s var(--ease) both; }
+  @keyframes popWord { from { opacity: 0; transform: translate(-50%, -50%) rotate(var(--r)) scale(.3); } }
 
   /* Cover */
   .cover { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
@@ -206,7 +213,6 @@ async function loadI18n() {
   document.querySelectorAll("[data-i18n-title]").forEach(el => el.title = t(el.dataset.i18nTitle));
   document.querySelectorAll("[data-i18n-alt]").forEach(el => el.alt = t(el.dataset.i18nAlt));
 }
-const COLORS = ["#4f48d6", "#2a9d8f", "#7a5af0", "#3b82c4", "#b4568f", "#5f6f2f", "#c27a2c"];
 const R = 42, CIRC = 2 * Math.PI * R;
 
 let data = null, slideId = null, bodyKey = "", wasVisible = false, celebrated = false, timeToastShown = false;
@@ -301,17 +307,71 @@ function choice(s, r) {
   }).join("")}</div>`;
 }
 
+/* ---------- Word cloud ---------- */
+// Each word gets a font, angle and color picked from its own text, so a word keeps its look
+// when the cloud is redrawn with new answers.
+const CLOUD_FONTS = [
+  {family: "'Montserrat', 'Segoe UI', system-ui, sans-serif", weight: 800},
+  {family: "'Playfair Display', Georgia, 'Times New Roman', serif", weight: 700},
+  {family: "'Caveat', 'Segoe Print', 'Bradley Hand', cursive", weight: 700, scale: 1.25},
+  {family: "'Nunito', 'Trebuchet MS', system-ui, sans-serif", weight: 800},
+  {family: "'Space Grotesk', 'Segoe UI', system-ui, sans-serif", weight: 700},
+  {family: "'Playfair Display', Georgia, serif", weight: 700, style: "italic"},
+];
+const CLOUD_ANGLES = [0, 0, 0, -90, 0, 90, -30, 30, 0, -15, 15];
+const CLOUD_COLORS = ["#4f48d6", "#2a9d8f", "#7a5af0", "#3b82c4", "#b4568f", "#d08a2e", "#1f7a8c", "#9b4dca", "#e0607e", "#5b8c3a"];
+const hash = s => [...s].reduce((h, ch) => (h * 31 + ch.codePointAt(0)) >>> 0, 7);
+let lastCloud = null;
+
 function cloud(r) {
   if (!r.words.length) return `<div class="waiting"><p class="note" style="text-align:center">${esc(t("presenter.no_words"))}</p></div>`;
-  const max = r.words[0][1];
-  const order = [];  // the most frequent words end up in the center
-  r.words.forEach((w, i) => i % 2 ? order.push(w) : order.unshift(w));
-  return `<div class="cloud">${order.map(([w, c], i) => {
-    const size = 1.2 + 4.2 * Math.pow(c / max, 0.7);
-    const color = COLORS[[...w].reduce((a, ch) => a + ch.charCodeAt(0), 0) % COLORS.length];
-    return `<span style="font-size:${size.toFixed(2)}rem;color:${color};animation-delay:${i * 40}ms" title="${c}">${esc(w)}</span>`;
-  }).join("")}</div>`;
+  return `<div class="cloud" id="cloud"></div>`;
 }
+
+// Places words on an elliptical spiral from the center, skipping spots that overlap earlier words
+// (biggest words first, so they get the middle).
+function drawCloud(words) {
+  const box = $("cloud");
+  if (!box || !words.length) return;
+  lastCloud = words;
+  const W = box.clientWidth, H = box.clientHeight;
+  if (!W || !H) return;
+  const ctx = (drawCloud.ctx ||= document.createElement("canvas").getContext("2d"));
+  const counts = words.map(w => w[1]), maxC = Math.max(...counts), minC = Math.min(...counts);
+  const minSize = Math.max(18, Math.min(W, H) * 0.07), maxSize = Math.min(H * 0.26, W * 0.13, 150);
+  const placed = [], html = [];
+  const overlaps = b => placed.some(p => b.x0 < p.x1 && b.x1 > p.x0 && b.y0 < p.y1 && b.y1 > p.y0);
+  words.forEach(([w, c], i) => {
+    const h = hash(w), font = CLOUD_FONTS[h % CLOUD_FONTS.length];
+    const angle = i === 0 ? 0 : CLOUD_ANGLES[(h >>> 3) % CLOUD_ANGLES.length];
+    const color = CLOUD_COLORS[(h >>> 7) % CLOUD_COLORS.length];
+    const k = maxC === minC ? (words.length === 1 ? 1 : 0.6) : (c - minC) / (maxC - minC);
+    let size = (minSize + (maxSize - minSize) * Math.pow(k, 0.75)) * (font.scale || 1);
+    for (let attempt = 0; attempt < 4; attempt++, size *= 0.8) {
+      ctx.font = `${font.style || "normal"} ${font.weight} ${size}px ${font.family}`;
+      const tw = ctx.measureText(w).width, th = size * 1.05, rad = angle * Math.PI / 180;
+      const bw = Math.abs(tw * Math.cos(rad)) + Math.abs(th * Math.sin(rad)) + 8;
+      const bh = Math.abs(tw * Math.sin(rad)) + Math.abs(th * Math.cos(rad)) + 6;
+      if (bw > W || bh > H) continue;
+      const start = (h % 628) / 100;  // each word starts its spiral at a different angle
+      for (let step = 0; step < 3000; step++) {
+        const a = start + step * 0.21, rr = step * 0.9;
+        const x = W / 2 + rr * Math.cos(a) * (W / H), y = H / 2 + rr * Math.sin(a);
+        const b = {x0: x - bw / 2, x1: x + bw / 2, y0: y - bh / 2, y1: y + bh / 2};
+        if (b.x0 < 0 || b.y0 < 0 || b.x1 > W || b.y1 > H) { if (rr > Math.max(W, H)) break; continue; }
+        if (overlaps(b)) continue;
+        placed.push(b);
+        html.push(`<span style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;--r:${angle}deg;font:${font.style || "normal"} ${font.weight} ${size.toFixed(1)}px ${font.family};` +
+          `color:${color};animation-delay:${Math.min(i * 45, 1500)}ms" title="${esc(tn("presenter.answers", c))}">${esc(w)}</span>`);
+        return;
+      }
+    }
+  });
+  box.innerHTML = html.join("");
+}
+addEventListener("resize", () => lastCloud && drawCloud(lastCloud));
+// Web fonts may arrive after the first drawing: redraw once they are ready so sizes are measured right.
+document.fonts?.ready.then(() => lastCloud && drawCloud(lastCloud));
 
 function waiting(s, d) {
   const who = d.who.slice(-36).map(n => `<span>${esc(n.split(" ")[0])}</span>`).join("");
@@ -404,6 +464,8 @@ function render(d) {
       else if (s.type === "choice") html = choice(s, d.results);
       else html = cloud(d.results);
       $("body").innerHTML = html;
+      lastCloud = null;
+      if (visible && s.type === "wordcloud") drawCloud(d.results.words);
       $("body").classList.toggle("reveal", visible && !wasVisible);
       if (visible && !wasVisible) setTimeout(() => $("body") && $("body").classList.remove("reveal"), 2200);
       wasVisible = visible;
