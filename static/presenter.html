@@ -139,6 +139,7 @@
   .cover .big .sub { font-size: 1.1rem; color: var(--muted); text-align: left; margin-bottom: 6px; }
   .cover .connected { margin-top: 18px; color: var(--muted); font-size: 1.1rem; }
   .cover .connected b { color: var(--accent-ink); font-size: 1.4rem; }
+  .cover .started { color: var(--muted); font-size: .95rem; margin-top: 2px; }
 
   footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 44px 16px; color: var(--muted); gap: 16px; font-size: .95rem; }
   footer #info { white-space: nowrap; }
@@ -179,7 +180,7 @@
     <button id="bTimer" data-i18n-title="presenter.restart_timer_tip"><span data-i18n="presenter.restart_timer"></span><kbd>T</kbd></button>
     <button id="bMore"><span data-i18n="presenter.add_time"></span><kbd>+</kbd></button>
     <button id="bReveal"><span id="revealText" data-i18n="presenter.show_results"></span><kbd>H</kbd></button>
-    <button id="bClear"><span data-i18n="presenter.clear_answers"></span></button>
+    <button id="bClear"><span id="clearText" data-i18n="presenter.clear_answers"></span></button>
     <button id="bPrev"><span data-i18n="presenter.previous"></span><kbd>←</kbd></button>
     <button id="bNext" class="primary"><span data-i18n="presenter.next"></span><kbd>→</kbd></button>
   </div>
@@ -212,9 +213,12 @@ let data = null, slideId = null, bodyKey = "", wasVisible = false, celebrated = 
 let localEnd = null;  // moment (performance.now) when time runs out
 
 async function control(action) {
-  await fetch("/api/control?k=" + encodeURIComponent(key), {
+  const res = await fetch("/api/control?k=" + encodeURIComponent(key), {
     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action})
   });
+  const r = await res.json().catch(() => ({}));
+  if (action === "clear_all") toast(r.backup ? t("presenter.backup_saved", {file: r.backup}) : t("presenter.cleared_all"), true);
+  else if (r.backup) toast(t("presenter.backup_saved", {file: r.backup}), true);
   refresh();
 }
 
@@ -335,7 +339,8 @@ function buildSlide(d) {
     el.innerHTML = `<div class="cover"><h1>${esc(s.title)}</h1>${s.text ? `<p class="text">${esc(s.text)}</p>` : ""}
       ${s.show_qr ? `<div class="big">${d.qr ? `<img id="qrBig" alt="${esc(t("presenter.qr_code"))}">` : ""}
         <div><div class="sub">${esc(t("presenter.scan_or_go"))}</div><div class="url" id="urlBig"></div></div></div>
-        <div class="connected">${t("presenter.cover_connected", {n: '<b id="nConnected">0</b>'})}</div>` : ""}</div>`;
+        <div class="connected">${t("presenter.cover_connected", {n: '<b id="nConnected">0</b>'})}</div>` : ""}
+      <div class="started" id="startedInfo"></div></div>`;
   } else {
     el.innerHTML = `<div class="heading">
         <div><div class="kicker">${esc(t("presenter.question_of", {n: d.question, total: d.questions}))}</div><h1>${esc(s.title)}</h1></div>
@@ -376,6 +381,9 @@ function render(d) {
     if ($("qrBig") && $("qrBig").getAttribute("src") !== qrSrc) $("qrBig").src = qrSrc;
     if ($("urlBig")) $("urlBig").textContent = shortUrl(d.url);
     if ($("nConnected")) $("nConnected").textContent = d.connected;
+    $("startedInfo").textContent = d.started ? t("presenter.started_info", {
+      date: new Date(d.started).toLocaleString(document.documentElement.lang, {dateStyle: "medium", timeStyle: "short"}),
+      people: tn("presenter.respondents", d.respondents)}) : "";
   } else {
     if ($("timer")) $("timer").hidden = !d.duration;
     const complete = d.expected > 0 && d.answered >= d.expected;
@@ -407,8 +415,12 @@ function render(d) {
     $("revealText").textContent = t(d.revealed ? "presenter.hide_results" : "presenter.show_results");
   }
   const question = s.type !== "content";
-  $("bTimer").disabled = $("bMore").disabled = !question || !d.duration;
-  $("bReveal").disabled = $("bClear").disabled = !question;
+  // Timer and results buttons only make sense on questions: hide them on the cover to keep the footer short.
+  $("bTimer").hidden = $("bMore").hidden = $("bReveal").hidden = !question;
+  $("bTimer").disabled = $("bMore").disabled = !d.duration;
+  // On the cover (content slides) the button clears the whole questionnaire; on a question, only that slide.
+  $("clearText").textContent = t(question ? "presenter.clear_answers" : "presenter.clear_all");
+  $("bClear").disabled = !question && !d.respondents;
   $("info").textContent = `${d.index + 1} / ${d.total} · ${tn("presenter.connected", d.connected)}`;
   $("bPrev").disabled = d.index === 0;
   $("bNext").disabled = d.index === d.total - 1;
@@ -480,7 +492,10 @@ $("bPrev").onclick = () => control("prev");
 $("bReveal").onclick = () => control("reveal");
 $("bTimer").onclick = () => control("restart_timer");
 $("bMore").onclick = () => control("add_time");
-$("bClear").onclick = () => { if (confirm(t("presenter.clear_confirm"))) control("clear"); };
+$("bClear").onclick = () => {
+  const all = data && data.slide.type === "content";
+  if (confirm(t(all ? "presenter.clear_all_confirm" : "presenter.clear_confirm"))) control(all ? "clear_all" : "clear");
+};
 $("bCopy").onclick = async () => {
   try { await navigator.clipboard.writeText(data.url); $("copyText").textContent = t("presenter.copied"); }
   catch (e) { prompt(t("presenter.copy_prompt"), data.url); }

@@ -99,7 +99,24 @@ Answers are saved automatically to two files:
 - `results-presentation.csv`: one row per student, with their name and one column per question.
   Opens in Excel or Google Sheets.
 - `results-presentation.json`: all the data, which the program uses to resume. If you close the
-  program and start it again, answers are kept. To start from scratch, use `--reset`.
+  program and start it again, answers are kept. It also stores `"started"`: the date and time the
+  first answer of the questionnaire was recorded.
+
+The file names always start with `results-` followed by the presentation file name (here,
+`presentation`), whatever the interface language.
+
+### Clearing answers (with automatic backup)
+
+- On the **cover** slide, the footer button **Clear all answers** empties the whole
+  questionnaire. On a question slide, the same button is **Clear answers** and only empties that
+  slide. Both ask for confirmation.
+- Starting the program with `--reset` also empties the questionnaire.
+
+Answers are never lost: **before** clearing, the current files are copied with the date and time
+the questionnaire started, for example `results-presentation-2026-10-14_14-37-17.json` and `.csv`.
+If a copy with that name already exists, `-2`, `-3`… is added, so an older copy is never
+overwritten. The presenter shows the name of the copy it just saved. After clearing everything, the
+next answer sets a new start date.
 
 The presenter link includes a key (`?k=...`) that changes every time you start the program.
 **Don't share it**: that link controls the presentation.
@@ -114,7 +131,7 @@ The presenter link includes a key (`?k=...`) that changes every time you start t
 | `--time 45` | Seconds to answer each question (`0` = no limit) |
 | `--port 8080` | Change the port (8000 by default) |
 | `--ip 192.168.0.10` | Force the IP shown in the QR code, if auto-detection picked the wrong network |
-| `--reset` | Ignore saved answers |
+| `--reset` | Start the questionnaire from scratch (a dated backup is saved first) |
 | `--key abc` | Use a fixed presenter key |
 
 ## Class 1 flow

@@ -89,12 +89,20 @@ class State:
         self.answers = {s["id"]: {} for s in self.slides}  # id -> voter -> answer
         self.seen = {}  # voter -> last request (to count who is connected)
         self.names = {}  # voter -> name they typed
-        if self.file.exists() and not reset:
+        self.started_at = None  # when the first answer was recorded (ISO date and time)
+        if self.file.exists():
             saved = json.loads(self.file.read_text(encoding="utf-8"))
-            self.names = saved.get("names", {})
-            for sid, answers in saved.get("answers", {}).items():
-                if sid in self.answers:
-                    self.answers[sid] = answers
+            self.started_at = saved.get("started")
+            if reset:
+                backup = self._backup()  # --reset never loses data: keep a dated copy first
+                print(f"  Previous answers backed up to: {backup}")
+                self.started_at = None
+                self._save()  # start the file empty, so old answers don't come back on the next run
+            else:
+                self.names = saved.get("names", {})
+                for sid, answers in saved.get("answers", {}).items():
+                    if sid in self.answers:
+                        self.answers[sid] = answers
 
     @property
     def current(self):
@@ -130,6 +138,7 @@ class State:
     def _save(self):
         data = {
             "title": self.title,
+            "started": self.started_at,
             "saved": datetime.now().isoformat(timespec="seconds"),
             "summary": {s["id"]: self._results(s) for s in self.slides if s["type"] != "content"},
             "names": self.names,
@@ -139,6 +148,24 @@ class State:
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, self.file)
         self._save_csv()
+
+    def _backup(self):
+        """Copy the results files to <name>-<start date and time>.json/.csv before deleting answers.
+
+        Returns the backup's file name, or None when there was nothing saved yet."""
+        if not self.file.exists():
+            return None
+        when = self.started_at or datetime.fromtimestamp(self.file.stat().st_mtime).isoformat(timespec="seconds")
+        stamp = when.replace("T", "_").replace(":", "-")
+        base, n = f"{self.file.stem}-{stamp}", 1
+        while self.file.with_name(f"{base}.json").exists():  # never overwrite an older backup
+            n += 1
+            base = f"{self.file.stem}-{stamp}-{n}"
+        target = self.file.with_name(f"{base}.json")
+        shutil.copy2(self.file, target)
+        if self.file.with_suffix(".csv").exists():
+            shutil.copy2(self.file.with_suffix(".csv"), target.with_suffix(".csv"))
+        return target.name
 
     def _save_csv(self):
         """One row per student, one column per statement (to open in Excel or Sheets)."""
@@ -247,6 +274,8 @@ class State:
                 "connected": sum(1 for t in self.seen.values() if now - t < 8),
                 "url": url,
                 "qr": segno is not None,
+                "started": self.started_at,
+                "respondents": len({v for a in self.answers.values() for v in a}),
             }
 
     def answer(self, voter, name, sid, answer):
@@ -286,11 +315,15 @@ class State:
                 value = answer
             else:
                 raise ValueError("error.no_question")
+            if not self.started_at:
+                self.started_at = datetime.now().isoformat(timespec="seconds")
             self.answers[sid][voter] = value
             self.names[voter] = name
             self._save()
 
     def control(self, action, index=None):
+        """Apply a presenter action. Returns the backup file name when answers were cleared."""
+        backup = None
         with self.lock:
             previous = self.index
             if action == "next":
@@ -308,13 +341,21 @@ class State:
             elif action == "add_time":
                 if self.duration:
                     self.duration = (time.time() - self.started) + self._remaining() + 15
-            elif action == "clear":
+            elif action == "clear":  # this slide only
+                backup = self._backup()
                 self.answers[self.current["id"]] = {}
+                self._save()
+            elif action == "clear_all":  # the whole questionnaire starts over
+                backup = self._backup()
+                self.answers = {s["id"]: {} for s in self.slides}
+                self.names = {}
+                self.started_at = None
                 self._save()
             else:
                 raise ValueError("error.unknown_action")
             if self.index != previous:
                 self._start_slide()
+        return backup
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -381,8 +422,8 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/control":
                 if not self._authorized(q):
                     return self._error("error.invalid_key", 403)
-                self.state.control(data.get("action"), data.get("index"))
-                return self._json({"ok": True})
+                backup = self.state.control(data.get("action"), data.get("index"))
+                return self._json({"ok": True, "backup": backup})
             self._error("error.not_found", 404)
         except json.JSONDecodeError:
             self._error("error.bad_request", 400)
