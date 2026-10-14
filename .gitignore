@@ -1,0 +1,8 @@
+# Entorno virtual y caché de Python
+.venv/
+__pycache__/
+
+# Respuestas de los alumnos (contienen nombres)
+resultados-*.json
+resultados-*.csv
+*.tmp

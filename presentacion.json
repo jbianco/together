@@ -1,0 +1,198 @@
+{
+  "titulo": "DUCT · Módulo 4 · Clase 1",
+  "tiempo": 30,
+  "diapositivas": [
+    {
+      "id": "portada",
+      "tipo": "contenido",
+      "titulo": "Módulo 4 · Clase 1: Tu entorno de desarrollo",
+      "texto": "Escaneá el QR o abrí el enlace que está en el chat para participar",
+      "mostrar_qr": true
+    },
+    {
+      "id": "hasta-donde",
+      "tipo": "opciones",
+      "titulo": "¿Hasta dónde llegaste con los temas de la clase?",
+      "ayuda": "Elegí el último tema que llegaste a leer o practicar.",
+      "opciones": [
+        "Todavía no empecé",
+        "Hasta el Tema 1 · Entorno de desarrollo",
+        "Hasta el Tema 2 · Python, pip y entornos virtuales",
+        "Hasta el Tema 3 · Configuración del IDE",
+        "Completé todo (hasta el Tema 4 · Git y GitHub)"
+      ]
+    },
+    {
+      "id": "mas-dudas",
+      "tipo": "opciones",
+      "titulo": "¿Qué tema te generó más dudas?",
+      "ayuda": "Elegí uno solo: el que más te gustaría repasar en clase.",
+      "opciones": [
+        "Tema 1 · Entorno de desarrollo",
+        "Tema 2 · Python, pip y entornos virtuales",
+        "Tema 3 · Configuración del IDE",
+        "Tema 4 · Git y GitHub",
+        "Ninguno en particular / todavía no los vi"
+      ]
+    },
+    {
+      "id": "t1-antes",
+      "tipo": "escalas",
+      "titulo": "Tema 1 · Entorno de desarrollo: ¿qué sabés hoy?",
+      "afirmaciones": [
+        {
+          "texto": "Ya había escuchado o trabajado con estos componentes"
+        },
+        {
+          "texto": "Entiendo qué es un entorno de desarrollo y cómo se relacionan el intérprete, el IDE, la terminal, el gestor de paquetes y Git"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t1-despues",
+      "tipo": "escalas",
+      "titulo": "Tema 1 · Entorno de desarrollo: ¿y ahora?",
+      "afirmaciones": [
+        {
+          "texto": "Entiendo qué es un entorno de desarrollo y cómo se relacionan el intérprete, el IDE, la terminal, el gestor de paquetes y Git",
+          "comparar_con": {
+            "id": "t1-antes",
+            "afirmacion": 1
+          }
+        },
+        {
+          "texto": "Siento que mi conocimiento del tema mejoró"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t2-antes",
+      "tipo": "escalas",
+      "titulo": "Tema 2 · Python, pip y entornos virtuales: ¿qué sabés hoy?",
+      "afirmaciones": [
+        {
+          "texto": "Ya instalé Python o usé pip alguna vez"
+        },
+        {
+          "texto": "Entiendo cómo instalar Python y paquetes con pip, y para qué sirven requirements.txt, venv y conda"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t2-despues",
+      "tipo": "escalas",
+      "titulo": "Tema 2 · Python, pip y entornos virtuales: ¿y ahora?",
+      "afirmaciones": [
+        {
+          "texto": "Entiendo cómo instalar Python y paquetes con pip, y para qué sirven requirements.txt, venv y conda",
+          "comparar_con": {
+            "id": "t2-antes",
+            "afirmacion": 1
+          }
+        },
+        {
+          "texto": "Siento que mi conocimiento del tema mejoró"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t3-antes",
+      "tipo": "escalas",
+      "titulo": "Tema 3 · Configuración del IDE: ¿qué sabés hoy?",
+      "afirmaciones": [
+        {
+          "texto": "Ya usé un IDE o un editor de código"
+        },
+        {
+          "texto": "Entiendo qué aporta un IDE (VS Code, PyCharm, JupyterLab) y cómo configurarlo para Python"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t3-despues",
+      "tipo": "escalas",
+      "titulo": "Tema 3 · Configuración del IDE: ¿y ahora?",
+      "afirmaciones": [
+        {
+          "texto": "Entiendo qué aporta un IDE (VS Code, PyCharm, JupyterLab) y cómo configurarlo para Python",
+          "comparar_con": {
+            "id": "t3-antes",
+            "afirmacion": 1
+          }
+        },
+        {
+          "texto": "Siento que mi conocimiento del tema mejoró"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t4-antes",
+      "tipo": "escalas",
+      "titulo": "Tema 4 · Git y GitHub: ¿qué sabés hoy?",
+      "afirmaciones": [
+        {
+          "texto": "Ya usé Git o GitHub alguna vez"
+        },
+        {
+          "texto": "Entiendo qué son un repositorio, un commit, una rama y el staging, y el flujo add → commit → push / pull"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "t4-despues",
+      "tipo": "escalas",
+      "titulo": "Tema 4 · Git y GitHub: ¿y ahora?",
+      "afirmaciones": [
+        {
+          "texto": "Entiendo qué son un repositorio, un commit, una rama y el staging, y el flujo add → commit → push / pull",
+          "comparar_con": {
+            "id": "t4-antes",
+            "afirmacion": 1
+          }
+        },
+        {
+          "texto": "Siento que mi conocimiento del tema mejoró"
+        }
+      ],
+      "min": 1,
+      "max": 5,
+      "etiqueta_min": "Nada",
+      "etiqueta_max": "Mucho"
+    },
+    {
+      "id": "nube",
+      "tipo": "nube",
+      "titulo": "¿Qué palabras te llevás de la clase de hoy?",
+      "max_palabras": 3,
+      "tiempo": 60
+    }
+  ]
+}

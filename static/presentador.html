@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Together · Presentador</title>
+<style>
+  :root {
+    --bg: #f5f5fa; --card: #ffffff; --ink: #25233b; --muted: #6f6d86; --line: #e7e6f0;
+    --accent: #6d66f0; --accent-ink: #3f38c4; --accent-soft: #eeedff;
+    --calma: #2a9d8f; --calma-soft: #e2f3f0; --ambar: #d9a03a; --ghost: #9a98ad;
+    --sombra: 0 1px 2px rgba(37, 35, 59, .04), 0 10px 30px rgba(37, 35, 59, .06);
+    --suave: cubic-bezier(.2, .8, .2, 1);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(900px 600px at 8% -10%, #ebe9ff 0%, transparent 60%),
+      radial-gradient(800px 600px at 105% 110%, #e1f3ef 0%, transparent 55%),
+      var(--bg);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  header { display: flex; justify-content: space-between; align-items: center; padding: 20px 44px 0; gap: 24px; min-height: 92px; }
+  .marca { display: flex; align-items: center; gap: 12px; color: var(--muted); font-weight: 600; letter-spacing: .01em; }
+  .marca i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft); }
+  .unirse { display: flex; align-items: center; gap: 14px; background: var(--card); padding: 8px 18px 8px 8px;
+            border-radius: 16px; box-shadow: var(--sombra); }
+  .unirse img { width: 76px; height: 76px; display: block; border-radius: 8px; }
+  .unirse .sub { color: var(--muted); font-size: .85rem; }
+  .unirse .url { font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; max-width: 380px; }
+
+  main { flex: 1; min-height: 0; padding: 12px 44px 8px; display: flex; }
+  .slide { flex: 1; min-height: 0; display: flex; flex-direction: column; background: rgba(255,255,255,.72);
+           border: 1px solid rgba(231,230,240,.9); border-radius: 28px; box-shadow: var(--sombra);
+           padding: 32px 44px 28px; backdrop-filter: blur(6px); }
+  .slide.entra { animation: entrar .6s var(--suave) both; }
+  @keyframes entrar { from { opacity: 0; transform: translateY(14px); } }
+
+  .cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; }
+  .kicker { color: var(--accent-ink); font-weight: 600; font-size: 1rem; letter-spacing: .04em; text-transform: uppercase; opacity: .8; }
+  h1 { font-size: clamp(1.8rem, 2.8vw, 2.9rem); line-height: 1.18; margin: 6px 0 0; font-weight: 650; letter-spacing: -.015em; text-wrap: balance; }
+
+  /* Reloj */
+  .reloj { position: relative; width: 96px; height: 96px; flex: none; }
+  .reloj svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .reloj .pista { fill: none; stroke: var(--accent-soft); stroke-width: 7; }
+  .reloj .arco { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; transition: stroke .6s, stroke-dashoffset .3s; }
+  .reloj .num { position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.9rem; font-weight: 650;
+                font-variant-numeric: tabular-nums; color: var(--ink); }
+  .reloj .num small { display: block; font-size: .7rem; font-weight: 500; color: var(--muted); margin-top: -6px; text-align: center; }
+  .reloj.final .arco { stroke: var(--ambar); }
+  .reloj.listo .arco { stroke: var(--calma); }
+  .reloj.listo .num { color: var(--calma); }
+  .reloj.listo { animation: latido .9s var(--suave); }
+  @keyframes latido { 40% { transform: scale(1.08); } }
+
+  /* Participación */
+  .participacion { display: flex; align-items: center; gap: 16px; margin: 22px 0 6px; color: var(--muted); font-size: 1.05rem; }
+  .participacion .barra-p { flex: 1; height: 8px; background: var(--accent-soft); border-radius: 99px; overflow: hidden; max-width: 520px; }
+  .participacion .barra-p div { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .8s var(--suave), background .6s; }
+  .participacion b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 650; }
+  .participacion.completa .barra-p div { background: var(--calma); }
+  .participacion.completa b { color: var(--calma); }
+
+  #cuerpo { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 14px; }
+
+  /* Mientras responden */
+  .espera { flex: 1; display: flex; flex-direction: column; gap: 14px; justify-content: center; }
+  .enunciado { display: flex; gap: 16px; align-items: baseline; background: var(--card); border-radius: 16px; padding: 18px 22px;
+               font-size: clamp(1.15rem, 1.6vw, 1.55rem); line-height: 1.35; box-shadow: 0 1px 2px rgba(37,35,59,.04); }
+  .enunciado span { color: var(--accent-ink); font-weight: 650; }
+  .grilla-ops { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 10px 14px; }
+  .grilla-ops .enunciado { padding: 13px 18px; font-size: clamp(1.05rem, 1.4vw, 1.35rem); }
+  .nota { color: var(--muted); font-size: 1.05rem; margin: 4px 0 0; }
+  .quienes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .quienes span { background: var(--accent-soft); color: var(--accent-ink); padding: 5px 12px; border-radius: 99px; font-size: .95rem;
+                  animation: aparecer .5s var(--suave) both; }
+  .quienes .mas { background: transparent; color: var(--muted); }
+  @keyframes aparecer { from { opacity: 0; transform: scale(.9); } }
+
+  /* Gráficos */
+  .afs { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px 48px; flex: 1; min-height: 0; }
+  .af { display: flex; flex-direction: column; min-height: 0; }
+  .af-texto { font-size: clamp(1.05rem, 1.45vw, 1.45rem); line-height: 1.32; min-height: 3.96em; }
+  .af-meta { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: .95rem;
+             margin: 4px 0 2px; gap: 12px; flex-wrap: wrap; }
+  .leyenda { display: flex; gap: 18px; align-items: center; }
+  .leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+  .grafico { width: 100%; height: min(30vh, 300px); display: block; overflow: visible; }
+  .grafico text { fill: var(--muted); font-size: 15px; font-family: inherit; }
+  .grafico .valor-x { fill: var(--ink); font-size: 17px; }
+  .grafico .lbl { fill: var(--ink); font-weight: 650; font-size: 17px; }
+  .grafico .eje { stroke: var(--line); stroke-width: 1; }
+  .grafico .barra { fill: var(--accent); fill-opacity: .85; transform-box: fill-box; transform-origin: bottom; }
+  .grafico .hit:hover { fill: rgba(109,102,240,.06); }
+  .grafico .curva { fill: none; stroke: var(--accent-ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+  .grafico .area { fill: var(--accent); fill-opacity: .08; }
+  .grafico .curva-antes { fill: none; stroke: var(--ghost); stroke-width: 2.5; stroke-dasharray: 7 6; }
+  .grafico .vacio-svg { fill: var(--muted); font-size: 18px; }
+  .entrada .barra { animation: crecer .9s var(--suave) both; }
+  .entrada .curva { stroke-dasharray: 1; animation: trazar 1.4s .35s var(--suave) both; }
+  .entrada .area, .entrada .curva-antes, .entrada .lbl { animation: fundido 1s .6s both; }
+  @keyframes crecer { from { transform: scaleY(0); } }
+  @keyframes trazar { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes fundido { from { opacity: 0; } }
+
+  /* Opciones */
+  .ops { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; max-width: 1100px; }
+  .op { display: grid; grid-template-columns: minmax(220px, 34%) 1fr; gap: 20px; align-items: center; }
+  .op-texto { font-size: clamp(1.05rem, 1.4vw, 1.35rem); line-height: 1.3; }
+  .op-pista { position: relative; height: 40px; background: var(--accent-soft); border-radius: 10px; }
+  .op-barra { position: absolute; inset: 0 auto 0 0; background: var(--accent); opacity: .85; border-radius: 10px;
+              transform-origin: left; transition: width .8s var(--suave); }
+  .op.max .op-barra { background: var(--accent-ink); opacity: 1; }
+  .op-num { position: absolute; top: 50%; transform: translateY(-50%); font-weight: 650; font-variant-numeric: tabular-nums;
+            white-space: nowrap; font-size: 1.05rem; color: var(--ink); }
+  .op-num small { font-weight: 500; color: var(--muted); margin-left: 6px; }
+  .entrada .op-barra { animation: crecerX .9s var(--suave) both; }
+  .entrada .op-num { animation: fundido .8s .5s both; }
+  @keyframes crecerX { from { transform: scaleX(0); } }
+
+  /* Nube */
+  .nube { flex: 1; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 6px 30px; padding: 12px; }
+  .nube span { font-weight: 650; line-height: 1.1; letter-spacing: -.01em; }
+  .entrada .nube span { animation: aparecer .7s var(--suave) both; }
+
+  /* Portada */
+  .portada { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; }
+  .portada h1 { font-size: clamp(2.2rem, 3.6vw, 3.6rem); }
+  .portada .texto { font-size: clamp(1.1rem, 1.6vw, 1.5rem); color: var(--muted); margin: 6px 0 22px; }
+  .portada .grande { display: flex; align-items: center; gap: 36px; background: var(--card); padding: 22px 40px 22px 22px;
+                     border-radius: 24px; box-shadow: var(--sombra); }
+  .portada .grande img { width: min(32vh, 300px); height: min(32vh, 300px); }
+  .portada .grande .url { font-size: clamp(1.3rem, 2vw, 2.1rem); font-weight: 650; text-align: left; overflow-wrap: anywhere; max-width: 520px; }
+  .portada .grande .sub { font-size: 1.1rem; color: var(--muted); text-align: left; margin-bottom: 6px; }
+  .portada .conectados { margin-top: 18px; color: var(--muted); font-size: 1.1rem; }
+  .portada .conectados b { color: var(--accent-ink); font-size: 1.4rem; }
+
+  footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 44px 16px; color: var(--muted); gap: 16px; font-size: .95rem; }
+  footer #info { white-space: nowrap; }
+  footer .botones { display: flex; gap: 2px; justify-content: flex-end; white-space: nowrap; }
+  button { font: inherit; font-size: .92rem; border: 1px solid transparent; background: transparent; color: var(--muted);
+           border-radius: 10px; padding: 7px 10px; cursor: pointer; transition: background .2s, color .2s; }
+  button:hover { background: var(--card); color: var(--ink); border-color: var(--line); }
+  button:disabled { opacity: .35; cursor: default; background: transparent; border-color: transparent; }
+  button.prim { background: var(--accent-ink); color: #fff; }
+  button.prim:hover { background: #352fae; color: #fff; }
+  kbd { font: inherit; font-size: .75rem; border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; margin-left: 6px; color: var(--muted); }
+  button.prim kbd { color: #dcdaff; border-color: #6d66f0; }
+
+  /* Aviso y confeti */
+  .aviso { position: fixed; left: 50%; top: 26px; transform: translate(-50%, -160%); background: var(--card); color: var(--calma);
+           padding: 14px 26px; border-radius: 99px; box-shadow: var(--sombra); font-weight: 650; font-size: 1.15rem;
+           transition: transform .7s var(--suave), opacity .5s; z-index: 10; white-space: nowrap; opacity: 0; }
+  .aviso.ver { transform: translate(-50%, 0); opacity: 1; }
+  .aviso.tiempo { color: var(--accent-ink); }
+  #confeti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
+  .error { margin: auto; max-width: 560px; text-align: center; font-size: 1.3rem; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="marca"><i></i><span id="marca"></span></div>
+  <div class="unirse" id="unirse" hidden>
+    <img id="qrChico" alt="Código QR para participar">
+    <div><div class="sub">Participá en</div><div class="url" id="urlChica"></div></div>
+  </div>
+</header>
+<main><section class="slide" id="slide"></section></main>
+<footer>
+  <div id="info"></div>
+  <div class="botones">
+    <button id="bCopiar">Copiar enlace</button>
+    <button id="bTiempo" title="Volver a empezar la cuenta regresiva">Reiniciar tiempo<kbd>T</kbd></button>
+    <button id="bMas">+15 s<kbd>+</kbd></button>
+    <button id="bRevelar">Mostrar resultados<kbd>H</kbd></button>
+    <button id="bBorrar">Borrar respuestas</button>
+    <button id="bAnt">Anterior<kbd>←</kbd></button>
+    <button id="bSig" class="prim">Siguiente<kbd>→</kbd></button>
+  </div>
+</footer>
+<div class="aviso" id="aviso"></div>
+<canvas id="confeti"></canvas>
+<script>
+const clave = new URLSearchParams(location.search).get("k") || "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+const COLORES = ["#4f48d6", "#2a9d8f", "#7a5af0", "#3b82c4", "#b4568f", "#5f6f2f", "#c27a2c"];
+const R = 42, CIRC = 2 * Math.PI * R;
+
+let datos = null, slideId = null, claveCuerpo = "", visibleAntes = false, celebrado = false, avisoTiempo = false;
+let finLocal = null;  // momento (performance.now) en que termina el tiempo
+
+async function control(accion) {
+  await fetch("/api/control?k=" + encodeURIComponent(clave), {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({accion})
+  });
+  actualizar();
+}
+
+/* ---------- Gráfico de distribución ---------- */
+// Curva suave: suma de campanas centradas en cada valor de la escala, pesadas por el % de respuestas.
+function densidad(pcts, mn, t, h = 0.42) {
+  return pcts.reduce((s, p, k) => s + p * Math.exp(-((t - (mn + k)) ** 2) / (2 * h * h)), 0);
+}
+
+function grafico(d, x) {
+  const mn = d.min ?? 1, mx = d.max ?? 5, k = mx - mn + 1;
+  const W = 560, H = 270, L = 44, Rr = 10, T = 26, B = 52;
+  const pw = W - L - Rr, ph = H - T - B, banda = pw / k, ancho = Math.min(banda * 0.56, 62);
+  const aPct = dist => { const n = dist.reduce((a, b) => a + b, 0); return dist.map(c => n ? (c / n) * 100 : 0); };
+  const pcts = aPct(x.distribucion);
+  const antes = x.antes_distribucion && x.antes_distribucion.some(c => c) ? aPct(x.antes_distribucion) : null;
+  const muestras = [];
+  for (let i = 0; i <= 80; i++) muestras.push(mn - 0.5 + (k * i) / 80);
+  const curva = p => muestras.map(t => [t, densidad(p, mn, t)]);
+  const cAhora = x.n ? curva(pcts) : [], cAntes = antes ? curva(antes) : [];
+  const tope = Math.max(10, ...pcts, ...cAhora.map(c => c[1]), ...cAntes.map(c => c[1]));
+  const yMax = Math.ceil(tope / 10) * 10;
+  const sx = t => L + ((t - (mn - 0.5)) / k) * pw, sy = v => T + ph - (v / yMax) * ph;
+  const linea = pts => pts.map(([t, v], i) => `${i ? "L" : "M"}${sx(t).toFixed(1)},${sy(v).toFixed(1)}`).join("");
+  const moda = x.n ? pcts.indexOf(Math.max(...pcts)) : -1;
+  let svg = `<svg class="grafico" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Distribución de respuestas">`;
+  for (const g of [0, yMax / 2, yMax])
+    svg += `<line class="eje" x1="${L}" x2="${W - Rr}" y1="${sy(g)}" y2="${sy(g)}"/>
+            <text x="${L - 8}" y="${sy(g) + 5}" text-anchor="end">${g}%</text>`;
+  pcts.forEach((p, i) => {
+    const cx = sx(mn + i), h = Math.max((p / yMax) * ph, p ? 4 : 0), r = Math.min(4, h / 2);
+    const x0 = cx - ancho / 2, y0 = T + ph - h;
+    const tip = `${mn + i}: ${plural(x.distribucion[i], "respuesta", "respuestas")} (${Math.round(p)}%)` +
+      (antes ? ` · antes ${Math.round(antes[i])}%` : "");
+    svg += `<rect class="hit" x="${cx - banda / 2}" y="${T}" width="${banda}" height="${ph}" fill="transparent"><title>${tip}</title></rect>`;
+    if (h) svg += `<path class="barra" pointer-events="none" style="animation-delay:${i * 70}ms"
+      d="M${x0},${y0 + h}V${y0 + r}Q${x0},${y0} ${x0 + r},${y0}H${x0 + ancho - r}Q${x0 + ancho},${y0} ${x0 + ancho},${y0 + r}V${y0 + h}Z"/>`;
+    if (i === moda) {  // etiqueta sobre la barra o la curva, la que esté más alta
+      const yl = Math.min(y0, sy(densidad(pcts, mn, mn + i))) - 10;
+      svg += `<text class="lbl" x="${cx}" y="${yl}" text-anchor="middle">${Math.round(p)}%</text>`;
+    }
+    svg += `<text class="valor-x" x="${cx}" y="${T + ph + 22}" text-anchor="middle">${mn + i}</text>`;
+  });
+  svg += `<text x="${sx(mn)}" y="${H - 6}" text-anchor="middle">${esc(d.etiqueta_min || "")}</text>
+          <text x="${sx(mx)}" y="${H - 6}" text-anchor="middle">${esc(d.etiqueta_max || "")}</text>`;
+  if (cAntes.length) svg += `<path class="curva-antes" d="${linea(cAntes)}"/>`;
+  if (cAhora.length) svg += `<path class="area" d="${linea(cAhora)}L${sx(mx + 0.5)},${sy(0)}L${sx(mn - 0.5)},${sy(0)}Z"/>
+                              <path class="curva" pathLength="1" d="${linea(cAhora)}"/>`;
+  else svg += `<text class="vacio-svg" x="${L + pw / 2}" y="${T + ph / 2}" text-anchor="middle">Sin respuestas</text>`;
+  return svg + `</svg>`;
+}
+
+function escalas(s, r) {
+  return `<div class="afs">${s.afirmaciones.map((a, i) => {
+    const x = r.afirmaciones[i];
+    const conAntes = x.antes_distribucion && x.antes_distribucion.some(c => c);
+    const leyenda = conAntes ? `<div class="leyenda">
+        <span><svg width="26" height="10"><line x1="0" x2="26" y1="5" y2="5" stroke="var(--accent-ink)" stroke-width="2.5"/></svg>Ahora</span>
+        <span><svg width="26" height="10"><line x1="0" x2="26" y1="5" y2="5" stroke="var(--ghost)" stroke-width="2.5" stroke-dasharray="7 6"/></svg>Antes de la explicación</span>
+      </div>` : "";
+    return `<div class="af">
+      <div class="af-texto">${esc(a.texto)}</div>
+      <div class="af-meta"><span>${plural(x.n, "respuesta", "respuestas")}</span>${leyenda}</div>
+      ${grafico(s, x)}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function opciones(s, r) {
+  const max = Math.max(...r.conteo), n = r.respuestas;
+  return `<div class="ops">${s.opciones.map((o, i) => {
+    const c = r.conteo[i], pct = n ? (c / n) * 100 : 0;
+    const dentro = pct > 55;  // el número va adentro de la barra si es larga
+    return `<div class="op${c && c === max ? " max" : ""}" title="${plural(c, "respuesta", "respuestas")}">
+      <div class="op-texto">${esc(o)}</div>
+      <div class="op-pista"><div class="op-barra" style="width:${pct}%;animation-delay:${i * 80}ms"></div>
+        <div class="op-num" style="${dentro ? `right:calc(${100 - pct}% + 12px);color:#fff` : `left:calc(${pct}% + 12px)`}">
+          ${Math.round(pct)}%<small style="${dentro ? "color:#dcdaff" : ""}">${plural(c, "persona", "personas")}</small></div>
+      </div></div>`;
+  }).join("")}</div>`;
+}
+
+function nube(r) {
+  if (!r.palabras.length) return `<div class="espera"><p class="nota" style="text-align:center">Todavía no hay palabras.</p></div>`;
+  const max = r.palabras[0][1];
+  const orden = [];  // las más frecuentes quedan en el centro
+  r.palabras.forEach((w, i) => i % 2 ? orden.push(w) : orden.unshift(w));
+  return `<div class="nube">${orden.map(([p, c], i) => {
+    const tam = 1.2 + 4.2 * Math.pow(c / max, 0.7);
+    const color = COLORES[[...p].reduce((a, ch) => a + ch.charCodeAt(0), 0) % COLORES.length];
+    return `<span style="font-size:${tam.toFixed(2)}rem;color:${color};animation-delay:${i * 40}ms" title="${c}">${esc(p)}</span>`;
+  }).join("")}</div>`;
+}
+
+function espera(s, d) {
+  const quienes = d.quienes.slice(-36).map(n => `<span>${esc(n.split(" ")[0])}</span>`).join("");
+  const mas = d.quienes.length > 36 ? `<span class="mas">y ${d.quienes.length - 36} más</span>` : "";
+  let enunciado = "";
+  if (s.tipo === "escalas")
+    enunciado = s.afirmaciones.map((a, i) => `<div class="enunciado"><span>${i + 1}</span>${esc(a.texto)}</div>`).join("") +
+      `<p class="nota">Respondé del ${s.min ?? 1} (${esc(s.etiqueta_min || "")}) al ${s.max ?? 5} (${esc(s.etiqueta_max || "")}).
+       No hay respuestas buenas ni malas: lo importante es que sea sincera.</p>`;
+  else if (s.tipo === "opciones")
+    enunciado = `<div class="grilla-ops">${s.opciones.map((o, i) =>
+      `<div class="enunciado"><span>${String.fromCharCode(65 + i)}</span>${esc(o)}</div>`).join("")}</div>` +
+      `<p class="nota">${esc(s.ayuda || "Elegí una sola opción.")}</p>`;
+  else enunciado = `<p class="nota" style="font-size:1.3rem">Escribí hasta ${s.max_palabras ?? 3} palabras desde tu celular o computadora.</p>`;
+  return `<div class="espera">${enunciado}<div class="quienes">${quienes}${mas}</div></div>`;
+}
+
+/* ---------- Render ---------- */
+function urlCorta(u) { return u.replace(/^https?:\/\//, "").replace(/\/$/, ""); }
+
+function armarSlide(d) {
+  const s = d.diapositiva, el = $("slide");
+  el.classList.remove("entra"); void el.offsetWidth; el.classList.add("entra");
+  if (s.tipo === "contenido") {
+    el.innerHTML = `<div class="portada"><h1>${esc(s.titulo)}</h1>${s.texto ? `<p class="texto">${esc(s.texto)}</p>` : ""}
+      ${s.mostrar_qr ? `<div class="grande">${d.qr ? `<img id="qrGrande" alt="Código QR">` : ""}
+        <div><div class="sub">Escaneá el QR o entrá a</div><div class="url" id="urlGrande"></div></div></div>
+        <div class="conectados"><b id="nConectados">0</b> personas conectadas</div>` : ""}</div>`;
+  } else {
+    el.innerHTML = `<div class="cabecera">
+        <div><div class="kicker">Pregunta ${d.pregunta} de ${d.preguntas}</div><h1>${esc(s.titulo)}</h1></div>
+        <div class="reloj" id="reloj"${d.duracion ? "" : " hidden"}>
+          <svg viewBox="0 0 100 100"><circle class="pista" cx="50" cy="50" r="${R}"/>
+            <circle class="arco" id="arco" cx="50" cy="50" r="${R}" stroke-dasharray="${CIRC}" stroke-dashoffset="0"/></svg>
+          <div class="num"><div><span id="segundos"></span><small id="unidad">seg</small></div></div>
+        </div>
+      </div>
+      <div class="participacion" id="participacion">
+        <div class="barra-p"><div id="barraP"></div></div><span id="textoP"></span>
+      </div>
+      <div id="cuerpo"></div>`;
+  }
+  claveCuerpo = ""; visibleAntes = false; celebrado = false; avisoTiempo = false;
+}
+
+function render(d) {
+  const s = d.diapositiva;
+  $("marca").textContent = d.titulo;
+  const qrSrc = "/qr.svg?u=" + encodeURIComponent(d.url);
+  const portada = s.tipo === "contenido" && s.mostrar_qr;
+  $("unirse").hidden = portada;
+  $("urlChica").textContent = urlCorta(d.url);
+  $("qrChico").hidden = !d.qr;
+  if (d.qr && $("qrChico").getAttribute("src") !== qrSrc) $("qrChico").src = qrSrc;
+
+  if (s.id !== slideId) { slideId = s.id; armarSlide(d); }
+
+  // Reloj: se sincroniza con el servidor sólo si se desfasó (evita saltos).
+  if (d.restante == null) finLocal = null;
+  else {
+    const fin = performance.now() + d.restante * 1000;
+    if (finLocal == null || Math.abs(fin - finLocal) > 400) finLocal = fin;
+  }
+
+  if (s.tipo === "contenido") {
+    if ($("qrGrande") && $("qrGrande").getAttribute("src") !== qrSrc) $("qrGrande").src = qrSrc;
+    if ($("urlGrande")) $("urlGrande").textContent = urlCorta(d.url);
+    if ($("nConectados")) $("nConectados").textContent = d.conectados;
+  } else {
+    if ($("reloj")) $("reloj").hidden = !d.duracion;
+    const completo = d.esperados > 0 && d.respondieron >= d.esperados;
+    const pct = d.esperados ? (d.respondieron / d.esperados) * 100 : 0;
+    $("barraP").style.width = pct + "%";
+    $("participacion").classList.toggle("completa", completo);
+    $("textoP").innerHTML = completo
+      ? `<b>✓ Respondieron todos</b> (${d.respondieron})`
+      : `<b>${d.respondieron}</b> de <b>${d.esperados}</b> respondieron`;
+
+    const visible = d.revelado || d.cerrada || completo;
+    const clave = JSON.stringify([visible, visible ? d.resultados : d.quienes]);
+    if (clave !== claveCuerpo) {
+      claveCuerpo = clave;
+      let html;
+      if (!visible) html = espera(s, d);
+      else if (s.tipo === "escalas") html = escalas(s, d.resultados);
+      else if (s.tipo === "opciones") html = opciones(s, d.resultados);
+      else html = nube(d.resultados);
+      $("cuerpo").innerHTML = html;
+      $("cuerpo").classList.toggle("entrada", visible && !visibleAntes);
+      if (visible && !visibleAntes) setTimeout(() => $("cuerpo") && $("cuerpo").classList.remove("entrada"), 2200);
+      visibleAntes = visible;
+    }
+    if (completo && !celebrado) { celebrado = true; $("reloj")?.classList.add("listo"); avisar("✓ ¡Respondieron todos!"); confeti(); }
+    if (!completo && celebrado) { celebrado = false; $("reloj")?.classList.remove("listo"); }
+    if (d.cerrada && !completo && !avisoTiempo) { avisoTiempo = true; avisar("Tiempo cumplido · estos son los resultados", true); }
+    if (!d.cerrada) avisoTiempo = false;
+    $("bRevelar").innerHTML = (d.revelado ? "Ocultar resultados" : "Mostrar resultados") + "<kbd>H</kbd>";
+  }
+  const pregunta = s.tipo !== "contenido";
+  $("bTiempo").disabled = $("bMas").disabled = !pregunta || !d.duracion;
+  $("bRevelar").disabled = $("bBorrar").disabled = !pregunta;
+  $("info").textContent = `${d.indice + 1} / ${d.total} · ${plural(d.conectados, "persona conectada", "personas conectadas")}`;
+  $("bAnt").disabled = d.indice === 0;
+  $("bSig").disabled = d.indice === d.total - 1;
+}
+
+function tic() {
+  const reloj = $("reloj");
+  if (reloj && finLocal != null && datos) {
+    const resta = Math.max(0, (finLocal - performance.now()) / 1000);
+    const listo = reloj.classList.contains("listo");
+    const frac = listo ? 1 : datos.duracion ? resta / datos.duracion : 0;
+    $("arco").setAttribute("stroke-dashoffset", (CIRC * (1 - frac)).toFixed(1));
+    $("segundos").textContent = listo ? "✓" : Math.ceil(resta);
+    $("unidad").textContent = listo ? "listo" : "seg";
+    reloj.classList.toggle("final", resta <= 5 && !listo);
+  }
+  requestAnimationFrame(tic);
+}
+
+let avisoT;
+function avisar(texto, tiempo) {
+  const a = $("aviso");
+  a.textContent = texto; a.classList.toggle("tiempo", !!tiempo); a.classList.add("ver");
+  clearTimeout(avisoT); avisoT = setTimeout(() => a.classList.remove("ver"), 3200);
+}
+
+// Confeti suave: pocas piezas, caída lenta y colores de la paleta.
+function confeti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const c = $("confeti"), ctx = c.getContext("2d"), dpr = devicePixelRatio || 1;
+  c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const piezas = Array.from({length: 110}, () => ({
+    x: innerWidth / 2 + (Math.random() - .5) * 200, y: innerHeight * .35,
+    vx: (Math.random() - .5) * 9, vy: -Math.random() * 9 - 3, g: .16 + Math.random() * .08,
+    r: Math.random() * Math.PI, vr: (Math.random() - .5) * .2, w: 6 + Math.random() * 6, h: 4 + Math.random() * 4,
+    color: ["#6d66f0", "#2a9d8f", "#a5a0ff", "#8fd3c7", "#f2c46d"][Math.floor(Math.random() * 5)],
+  }));
+  const t0 = performance.now();
+  (function cuadro(t) {
+    const vida = (t - t0) / 2600;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    if (vida >= 1) return;
+    for (const p of piezas) {
+      p.vx *= .985; p.vy = p.vy * .985 + p.g; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      ctx.save(); ctx.globalAlpha = 1 - vida ** 2; ctx.translate(p.x, p.y); ctx.rotate(p.r);
+      ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+    }
+    requestAnimationFrame(cuadro);
+  })(t0);
+}
+
+async function actualizar() {
+  try {
+    const res = await fetch("/api/presentador?k=" + encodeURIComponent(clave));
+    if (res.status === 403) {
+      $("slide").innerHTML = `<div class="error">Clave de presentador inválida. Abrí el enlace que muestra la terminal al iniciar el programa.</div>`;
+      return;
+    }
+    datos = await res.json();
+    render(datos);
+  } catch (e) {
+    $("info").textContent = "Sin conexión con el programa…";
+  }
+}
+
+$("bSig").onclick = () => control("siguiente");
+$("bAnt").onclick = () => control("anterior");
+$("bRevelar").onclick = () => control("revelar");
+$("bTiempo").onclick = () => control("reiniciar_tiempo");
+$("bMas").onclick = () => control("mas_tiempo");
+$("bBorrar").onclick = () => { if (confirm("¿Borrar todas las respuestas de esta diapositiva?")) control("borrar"); };
+$("bCopiar").onclick = async () => {
+  try { await navigator.clipboard.writeText(datos.url); $("bCopiar").textContent = "¡Copiado!"; }
+  catch (e) { prompt("Copiá el enlace para los alumnos:", datos.url); }
+  setTimeout(() => $("bCopiar").textContent = "Copiar enlace", 1500);
+};
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if (["arrowright", "pagedown", " "].includes(k)) { e.preventDefault(); control("siguiente"); }
+  else if (["arrowleft", "pageup"].includes(k)) { e.preventDefault(); control("anterior"); }
+  else if (k === "h") control("revelar");
+  else if (k === "t") control("reiniciar_tiempo");
+  else if (k === "+") control("mas_tiempo");
+  else if (k === "f") document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+});
+actualizar();
+setInterval(actualizar, 1000);
+requestAnimationFrame(tic);
+</script>
+</body>
+</html>

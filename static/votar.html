@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f5fa">
+<title>Together · Participar</title>
+<style>
+  :root {
+    --bg: #f5f5fa; --card: #ffffff; --ink: #25233b; --muted: #6f6d86; --line: #e7e6f0;
+    --accent: #6d66f0; --accent-ink: #3f38c4; --accent-soft: #eeedff;
+    --calma: #2a9d8f; --calma-soft: #e2f3f0; --ambar: #d9a03a; --err: #b5473a;
+    --sombra: 0 1px 2px rgba(37, 35, 59, .04), 0 8px 24px rgba(37, 35, 59, .06);
+    --suave: cubic-bezier(.2, .8, .2, 1);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  body { margin: 0; color: var(--ink); font-size: 17px; line-height: 1.45;
+         font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: radial-gradient(600px 400px at 0% 0%, #ebe9ff 0%, transparent 60%), var(--bg); min-height: 100vh; }
+
+  .tiempo { position: sticky; top: 0; z-index: 5; background: rgba(245,245,250,.92); backdrop-filter: blur(6px); }
+  .tiempo .barra { height: 5px; background: var(--accent-soft); }
+  .tiempo .barra div { height: 100%; background: var(--accent); width: 100%; border-radius: 0 99px 99px 0; transition: background .6s; }
+  .tiempo.final .barra div { background: var(--ambar); }
+  .tiempo.cerrado .barra div { background: var(--line); }
+
+  .cont { max-width: 560px; margin: 0 auto; padding: 18px 18px 48px; }
+  .arriba { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: .88rem; gap: 10px; min-height: 30px; }
+  .arriba a { color: var(--accent-ink); text-decoration: none; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border-radius: 99px; padding: 4px 12px;
+          box-shadow: var(--sombra); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; white-space: nowrap; flex: none; }
+  .pill.final { color: #8a6114; }
+  h1 { font-size: 1.4rem; line-height: 1.25; margin: 14px 0 6px; font-weight: 650; letter-spacing: -.01em; }
+  .ayuda { color: var(--muted); font-size: .95rem; margin: 0 0 18px; }
+
+  .card { background: var(--card); border-radius: 18px; padding: 18px; margin-bottom: 14px; box-shadow: var(--sombra);
+          animation: subir .5s var(--suave) both; }
+  .card:nth-child(2) { animation-delay: .06s; }
+  @keyframes subir { from { opacity: 0; transform: translateY(10px); } }
+  .card p { margin: 0 0 14px; }
+  .opciones { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 8px; }
+  .opciones button { font: inherit; font-weight: 600; font-size: 1.15rem; padding: 13px 0; border-radius: 12px;
+                     border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer;
+                     transition: background .25s, border-color .25s, color .25s, transform .15s; }
+  .opciones button:active { transform: scale(.96); }
+  .opciones button.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .opciones button:disabled { cursor: default; opacity: .55; }
+  .opciones.lista { grid-template-columns: 1fr; }
+  .opciones.lista button { display: flex; align-items: center; gap: 12px; text-align: left; font-size: 1rem; font-weight: 500;
+                           padding: 14px 16px; line-height: 1.3; }
+  .opciones.lista button .letra { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+                                  background: var(--card); color: var(--accent-ink); font-weight: 650; font-size: .9rem;
+                                  border: 1.5px solid var(--line); }
+  .opciones.lista button.sel .letra { background: #fff; border-color: #fff; }
+  .extremos { display: flex; justify-content: space-between; color: var(--muted); font-size: .82rem; margin-top: 8px; }
+
+  input[type=text] { width: 100%; font: inherit; padding: 14px 16px; border-radius: 12px; border: 1.5px solid var(--line);
+                     background: var(--card); margin-bottom: 10px; color: var(--ink); transition: border-color .2s, box-shadow .2s; }
+  input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  input[type=text]:disabled { opacity: .6; }
+  .enviar { width: 100%; font: inherit; font-weight: 650; padding: 16px; border: 0; border-radius: 14px;
+            background: var(--accent-ink); color: #fff; cursor: pointer; margin-top: 6px; transition: opacity .2s, transform .15s; }
+  .enviar:active { transform: scale(.99); }
+  .enviar:disabled { opacity: .35; cursor: default; }
+
+  .estado { display: flex; gap: 12px; align-items: flex-start; border-radius: 14px; padding: 14px 16px; margin-top: 14px;
+            animation: subir .45s var(--suave) both; }
+  .estado.ok { background: var(--calma-soft); color: #1d6b61; }
+  .estado.err { background: #fbecea; color: var(--err); }
+  .estado.fin { background: var(--accent-soft); color: var(--accent-ink); }
+  .estado .ico { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; font-size: .9rem; }
+  .estado.ok .ico { background: var(--calma); animation: pop .5s var(--suave); }
+  .estado.err .ico { background: var(--err); }
+  .estado.fin .ico { background: var(--accent-ink); }
+  @keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.15); } }
+
+  .espera { text-align: center; padding: 34px 20px; }
+  .espera .punto { width: 14px; height: 14px; margin: 0 auto 16px; border-radius: 50%; background: var(--accent);
+                   animation: respirar 3.2s ease-in-out infinite; }
+  @keyframes respirar { 0%, 100% { box-shadow: 0 0 0 0 rgba(109,102,240,.35); } 50% { box-shadow: 0 0 0 16px rgba(109,102,240,0); } }
+  .espera b { display: block; font-size: 1.15rem; margin-bottom: 4px; }
+  .espera span { color: var(--muted); }
+  .conexion { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 8px; font-size: .85rem; background: #fff6e0; color: #6b5200; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="tiempo" id="tiempo" hidden><div class="barra"><div id="barraT"></div></div></div>
+<div class="cont" id="cont"><div class="card espera"><div class="punto"></div><span>Conectando…</span></div></div>
+<div class="conexion" id="conexion" hidden>Sin conexión. Reintentando…</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nuevoId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const votante = (() => {
+  try {
+    let v = localStorage.getItem("together-id");
+    if (!v) { v = nuevoId(); localStorage.setItem("together-id", v); }
+    return v;
+  } catch (e) { return nuevoId(); }
+})();
+const leerNombre = () => { try { return localStorage.getItem("together-nombre") || ""; } catch (e) { return ""; } };
+let nombre = leerNombre();
+let actualId = null, ultimo = null, cerrada = false, enviado = false;
+let finLocal = null, duracion = 0;
+
+function estado(tipo, texto) {
+  const m = $("msg");
+  if (!m) return;
+  const ico = {ok: "✓", err: "!", fin: "✓"}[tipo] || "";
+  m.innerHTML = texto ? `<div class="estado ${tipo}"><div class="ico">${ico}</div><div>${texto}</div></div>` : "";
+}
+
+async function enviar(id, respuesta) {
+  try {
+    const res = await fetch("/api/responder", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({v: votante, nombre, id, respuesta})
+    });
+    const d = await res.json();
+    if (res.ok) {
+      enviado = true;
+      estado("ok", `<b>¡Listo, ${esc(nombre.split(" ")[0])}!</b> Tu respuesta quedó registrada.
+        Si querés, podés cambiarla mientras quede tiempo.`);
+      $("bEnviar").textContent = "Actualizar respuesta";
+    } else estado("err", esc(d.error || "No se pudo enviar."));
+  } catch (e) { estado("err", "No se pudo enviar. Revisá tu conexión e intentá de nuevo."); }
+}
+
+function renderEscalas(s, previa) {
+  const mn = s.min ?? 1, mx = s.max ?? 5, valores = [];
+  for (let x = mn; x <= mx; x++) valores.push(x);
+  const sel = previa ? [...previa] : s.afirmaciones.map(() => null);
+  $("ayuda").textContent = `Elegí un número del ${mn} al ${mx} para cada afirmación. No hay respuestas buenas ni malas: respondé con sinceridad.`;
+  $("cuerpo").innerHTML = s.afirmaciones.map((a, i) => `
+    <div class="card"><p>${esc(a.texto)}</p>
+      <div class="opciones" style="--n:${valores.length}" role="radiogroup">
+        ${valores.map(x => `<button type="button" role="radio" aria-checked="${sel[i] === x}" data-i="${i}" data-x="${x}" class="${sel[i] === x ? "sel" : ""}">${x}</button>`).join("")}
+      </div>
+      <div class="extremos"><span>${mn} · ${esc(s.etiqueta_min || "")}</span><span>${esc(s.etiqueta_max || "")} · ${mx}</span></div>
+    </div>`).join("") +
+    `<button class="enviar" id="bEnviar">${previa ? "Actualizar respuesta" : "Enviar respuesta"}</button><div id="msg"></div>`;
+  const listo = () => $("bEnviar").disabled = cerrada || sel.some(v => v === null);
+  $("cuerpo").querySelectorAll(".opciones button").forEach(b => b.onclick = () => {
+    if (cerrada) return;
+    sel[+b.dataset.i] = +b.dataset.x;
+    b.parentElement.querySelectorAll("button").forEach(o => { o.classList.toggle("sel", o === b); o.setAttribute("aria-checked", o === b); });
+    listo();
+  });
+  $("bEnviar").onclick = () => enviar(s.id, sel);
+  listo();
+  if (previa) estado("ok", "Ya respondiste esta pregunta. Podés cambiar tu respuesta mientras quede tiempo.");
+}
+
+function renderOpciones(s, previa) {
+  let sel = typeof previa === "number" ? previa : null;
+  $("ayuda").textContent = s.ayuda || "Elegí una sola opción.";
+  $("cuerpo").innerHTML = `<div class="card"><div class="opciones lista" role="radiogroup">
+      ${s.opciones.map((o, i) => `<button type="button" role="radio" aria-checked="${sel === i}" data-i="${i}" class="${sel === i ? "sel" : ""}">
+        <span class="letra">${String.fromCharCode(65 + i)}</span><span>${esc(o)}</span></button>`).join("")}
+    </div></div>
+    <button class="enviar" id="bEnviar">${previa != null ? "Actualizar respuesta" : "Enviar respuesta"}</button><div id="msg"></div>`;
+  const listo = () => $("bEnviar").disabled = cerrada || sel === null;
+  $("cuerpo").querySelectorAll(".lista button").forEach(b => b.onclick = () => {
+    if (cerrada) return;
+    sel = +b.dataset.i;
+    b.parentElement.querySelectorAll("button").forEach(o => { o.classList.toggle("sel", o === b); o.setAttribute("aria-checked", o === b); });
+    listo();
+  });
+  $("bEnviar").onclick = () => enviar(s.id, sel);
+  listo();
+  if (previa != null) estado("ok", "Ya respondiste esta pregunta. Podés cambiar tu respuesta mientras quede tiempo.");
+}
+
+function renderNube(s, previa) {
+  const n = s.max_palabras ?? 3;
+  $("ayuda").textContent = `Escribí hasta ${n} palabras que resuman lo que te llevás. Una palabra por casillero.`;
+  let campos = "";
+  for (let i = 0; i < n; i++)
+    campos += `<input type="text" maxlength="30" autocomplete="off" autocapitalize="none" placeholder="Palabra ${i + 1}" value="${esc(previa?.[i] || "")}">`;
+  $("cuerpo").innerHTML = `<div class="card">${campos}</div>
+    <button class="enviar" id="bEnviar">${previa ? "Actualizar palabras" : "Enviar palabras"}</button><div id="msg"></div>`;
+  $("bEnviar").onclick = () => {
+    const palabras = [...$("cuerpo").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean);
+    if (!palabras.length) return estado("err", "Escribí al menos una palabra.");
+    enviar(s.id, palabras);
+  };
+  if (previa) estado("ok", "Ya enviaste tus palabras. Podés cambiarlas mientras quede tiempo.");
+}
+
+function pedirNombre() {
+  $("tiempo").hidden = true;
+  $("cont").innerHTML = `<div class="card" style="margin-top:12px">
+    <h1 style="margin-top:0">¡Hola! ¿Cómo te llamás?</h1>
+    <p class="ayuda">Escribí tu nombre y apellido antes de empezar. Así tu docente puede ver la participación de la clase.</p>
+    <form id="fNombre">
+      <input type="text" id="iNombre" maxlength="60" autocomplete="name" placeholder="Nombre y apellido" value="${esc(nombre)}" required>
+      <button class="enviar" id="bNombre">Comenzar</button>
+    </form></div>`;
+  const i = $("iNombre"), b = $("bNombre");
+  const listo = () => b.disabled = i.value.trim().length < 2;
+  i.oninput = listo; listo(); i.focus();
+  $("fNombre").onsubmit = e => {
+    e.preventDefault();
+    nombre = i.value.replace(/\s+/g, " ").trim();
+    try { localStorage.setItem("together-nombre", nombre); } catch (err) {}
+    actualId = null;
+    if (ultimo) render(ultimo);
+  };
+}
+
+function render(d) {
+  if (!nombre) return pedirNombre();
+  const s = d.diapositiva;
+  enviado = d.mi_respuesta != null;
+  const kicker = s.tipo === "contenido" ? "" : `Pregunta ${d.pregunta} de ${d.preguntas}`;
+  $("cont").innerHTML = `<div class="arriba"><span>${kicker ? kicker + " · " : ""}${esc(nombre.split(" ")[0])}
+      · <a href="#" id="cambiar">cambiar</a></span><span class="pill" id="pill" hidden></span></div>
+    <h1>${esc(s.titulo)}</h1><p class="ayuda" id="ayuda"></p><div id="cuerpo"></div>`;
+  $("cambiar").onclick = e => { e.preventDefault(); pedirNombre(); };
+  cerrada = d.cerrada;
+  if (s.tipo === "escalas") renderEscalas(s, d.mi_respuesta);
+  else if (s.tipo === "nube") renderNube(s, d.mi_respuesta);
+  else if (s.tipo === "opciones") renderOpciones(s, d.mi_respuesta);
+  else {
+    $("ayuda").hidden = true;
+    $("cuerpo").innerHTML = `<div class="card espera"><div class="punto"></div>
+      <b>Ya estás conectado/a, ${esc(nombre.split(" ")[0])}.</b>
+      <span>La próxima pregunta va a aparecer acá en un momento.</span></div>`;
+  }
+  aplicarCierre();
+}
+
+function aplicarCierre() {
+  const cuerpo = $("cuerpo");
+  if (!cuerpo) return;
+  cuerpo.querySelectorAll("button:not(#bEnviar), input").forEach(el => el.disabled = cerrada);
+  const b = $("bEnviar");
+  if (b) {
+    b.hidden = cerrada;
+    if (!cerrada) b.disabled = b.textContent.includes("palabras") ? false : !!cuerpo.querySelector(".opciones") &&
+      [...cuerpo.querySelectorAll(".opciones")].some(g => !g.querySelector(".sel"));
+  }
+  if (cerrada && ultimo && ultimo.diapositiva.tipo !== "contenido")
+    estado("fin", enviado ? "<b>Se terminó el tiempo.</b> Tu respuesta quedó guardada. ¡Gracias por participar!"
+                          : "<b>Se terminó el tiempo para esta pregunta.</b> Esperá la siguiente.");
+}
+
+function tic() {
+  const t = $("tiempo"), pill = $("pill");
+  if (finLocal != null && duracion && nombre && ultimo?.diapositiva.tipo !== "contenido") {
+    const resta = Math.max(0, (finLocal - performance.now()) / 1000);
+    t.hidden = false;
+    $("barraT").style.width = (resta / duracion * 100) + "%";
+    t.classList.toggle("final", resta <= 5 && resta > 0);
+    t.classList.toggle("cerrado", resta === 0);
+    if (pill) {
+      pill.hidden = false;
+      pill.textContent = resta > 0 ? `⏱ ${Math.ceil(resta)} s` : "Tiempo cumplido";
+      pill.classList.toggle("final", resta <= 5 && resta > 0);
+    }
+    if (resta === 0 && !cerrada) { cerrada = true; aplicarCierre(); }
+  } else {
+    t.hidden = true;
+    if (pill) pill.hidden = true;
+  }
+  requestAnimationFrame(tic);
+}
+
+async function actualizar() {
+  try {
+    const res = await fetch(`/api/estado?v=${encodeURIComponent(votante)}&n=${encodeURIComponent(nombre)}`);
+    const d = await res.json();
+    $("conexion").hidden = true;
+    ultimo = d;
+    duracion = d.duracion;
+    if (d.restante == null) finLocal = null;
+    else {
+      const fin = performance.now() + d.restante * 1000;
+      if (finLocal == null || Math.abs(fin - finLocal) > 400) finLocal = fin;
+    }
+    if (d.diapositiva.id !== actualId) {
+      if ($("fNombre")) return;  // no interrumpir a quien está escribiendo su nombre
+      actualId = d.diapositiva.id;
+      render(d);
+    } else if (d.cerrada !== cerrada) {  // el docente reinició o extendió el tiempo
+      cerrada = d.cerrada;
+      if (!cerrada) estado("", "");
+      aplicarCierre();
+    }
+  } catch (e) { $("conexion").hidden = false; }
+}
+actualizar();
+setInterval(actualizar, 1500);
+requestAnimationFrame(tic);
+</script>
+</body>
+</html>
